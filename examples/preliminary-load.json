@@ -1,0 +1,35 @@
+{
+  "plan_id": "demo-house",
+  "plan_revision": "1",
+  "plan_status": "draft",
+  "zones": {
+    "bedroom-lighting": [
+      {"room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-001"}
+    ],
+    "bedroom-receptacles": [
+      {"room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-003"}
+    ]
+  },
+  "requirements": [
+    {
+      "requirement_id": "desk-device",
+      "room_id": "12bXDOM85FnBBK679nyVuK",
+      "load_class_id": "TẢI-005",
+      "input_W": 120,
+      "power_source": "Demo questionnaire: desk equipment"
+    }
+  ],
+  "placements": [
+    {"load_id": "light-1", "room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-001", "kind": "equipment", "input_W": 10, "power_source": "Demo input"},
+    {"load_id": "light-2", "room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-001", "kind": "equipment", "input_W": 10, "power_source": "Demo input"},
+    {"load_id": "desk", "room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-005", "kind": "equipment", "outlet_id": "desk-outlet", "requirement_id": "desk-device"},
+    {"load_id": "desk-outlet", "room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-005", "kind": "receptacle", "rating_A": 16},
+    {"load_id": "bed-outlet-1", "room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-003", "kind": "allowance", "outlet_id": "bed-outlet-1", "circuit_id": "general-receptacles", "input_VA": 180, "power_source": "Demo allowance: TCVN 9206:2012 5.3(b)"},
+    {"load_id": "bed-outlet-2", "room_id": "12bXDOM85FnBBK679nyVuK", "load_class_id": "TẢI-003", "kind": "allowance", "outlet_id": "bed-outlet-2", "circuit_id": "general-receptacles", "input_VA": 180, "power_source": "Demo allowance: TCVN 9206:2012 5.3(b)"},
+    {"load_id": "wc-light", "room_id": "12bXDOM85FnBBK679nyVuO", "load_class_id": "TẢI-001", "kind": "equipment", "input_W": 10, "power_source": "Demo input"}
+  ],
+  "scenarios": {
+    "day": ["desk", "bed-outlet-1", "bed-outlet-2"],
+    "evening": ["light-1", "light-2", "desk", "bed-outlet-1", "bed-outlet-2", "wc-light"]
+  }
+}
