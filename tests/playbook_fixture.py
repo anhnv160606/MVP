@@ -41,6 +41,18 @@ class SamplePlaybookClient:
             "cong_suat_max_w": 14, "he_so_nhu_cau": None,
             "nguon_quy_tac": "Giả định minh họa; tham chiếu TCVN 9206:2012",
             "tinh_trang_kiem_chung": "Tham khảo",
+        }, {
+            "ma_lop_phu_tai": "TẢI-002", "ten_lop_phu_tai": "Ổ cắm phòng khách",
+            "nhom_phu_tai": "Ổ cắm chung", "cong_suat_min_w": 100,
+            "cong_suat_max_w": 300, "he_so_nhu_cau": None,
+            "nguon_quy_tac": "Giả định minh họa; tham chiếu TCVN 9206:2012",
+            "tinh_trang_kiem_chung": "Tham khảo",
+        }, {
+            "ma_lop_phu_tai": "TẢI-003", "ten_lop_phu_tai": "Ổ cắm phòng ngủ",
+            "nhom_phu_tai": "Ổ cắm chung", "cong_suat_min_w": 80,
+            "cong_suat_max_w": 250, "he_so_nhu_cau": None,
+            "nguon_quy_tac": "Giả định minh họa; tham chiếu TCVN 9206:2012",
+            "tinh_trang_kiem_chung": "Tham khảo",
         }],
         "lop_dau_cuoi": [{
             "ma_lop_dau_cuoi": "ĐIỂM-001", "ten_lop_dau_cuoi": "Điểm đèn trần",

@@ -31,8 +31,8 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
         ("engine_validate_placements", "Kiểm tra tọa độ và xung đột với hình học IFC/rule đã cung cấp.", {"proposals": {"type": "array", "items": {"type": "object"}}}, ["proposals"]),
         ("draft_save_placements", "Lưu phương án đã kiểm định để kỹ sư review; chưa ghi IFC.", {"proposals": {"type": "array", "items": {"type": "object"}}, "validation_result": {"type": "object"}}, ["proposals", "validation_result"]),
         ("ifc_apply_placements_batch", "Ghi IFC cho phiên bản được kỹ sư duyệt thông qua Orchestrator.", {"plan_id": {"type": "string"}, "version": {"type": "integer"}}, ["plan_id", "version"]),
-        ("ifc_modify_device", "Tạo phiên bản nháp mới sau khi sửa một điểm tải; mọi bản chính thức cần duyệt.", {"device_id": {"type": "string"}, "changes": {"type": "object"}, "plan_id": {"type": "string"}, "version": {"type": "integer"}}, ["device_id", "changes"]),
-        ("ifc_remove_device", "Xóa điểm tải khỏi bản nháp thành phiên bản mới; xóa IFC chính thức cần duyệt.", {"device_id": {"type": "string"}, "reason": {"type": "string"}, "plan_id": {"type": "string"}, "version": {"type": "integer"}}, ["device_id", "reason"]),
+        ("ifc_modify_device", "Tạo phiên bản nháp mới sau khi sửa một điểm tải trong plan/version hiện tại.", {"device_id": {"type": "string"}, "changes": {"type": "object"}, "plan_id": {"type": "string"}, "version": {"type": "integer"}}, ["device_id", "changes", "plan_id", "version"]),
+        ("ifc_remove_device", "Tạo phiên bản nháp mới sau khi xóa một điểm tải khỏi plan/version hiện tại.", {"device_id": {"type": "string"}, "reason": {"type": "string"}, "plan_id": {"type": "string"}, "version": {"type": "integer"}}, ["device_id", "reason", "plan_id", "version"]),
         ("calc_preliminary_load", "Tổng hợp tải nối và tải tính toán sơ bộ, công khai giả định/thiếu dữ liệu.", {"scope_type": {"type": "string", "enum": ["space", "storey", "zone", "project"]}, "scope_id": {"type": "string"}, "plan_id": {"type": "string"}}, ["scope_type", "scope_id"]),
     ]
     tool_defs = [{"type": "function", "function": {"name": name, "description": description,
@@ -40,7 +40,7 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
                  for name, description, properties, required in specs]
 
     def context_for(space_id: str) -> dict[str, Any]:
-        return ifc_read.read_placement_context_from_ifc(space_id, model=model())
+        return ifc_read.ifc_get_placement_context(space_id, model=model())
 
     def existing_devices() -> list[dict[str, Any]]:
         adapter = model_adapter_provider() if model_adapter_provider else None
@@ -71,20 +71,70 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
                     seen.add(key)
         return result_rows
 
+    def validate_proposals(
+        proposals: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        space_ids = {
+            str(proposal["space_id"])
+            for proposal in proposals
+            if proposal.get("space_id") is not None
+        }
+        contexts = {sid: context_for(sid) for sid in space_ids}
+        rules = rules_for(proposals, contexts)
+        return placement.engine_validate_placements(
+            proposals,
+            contexts,
+            rules,
+            existing_devices=existing_devices(),
+        )
+
     def execute(name: str, args: dict[str, Any]) -> Any:
         args = args or {}
         if name == "ifc_get_placement_context":
             return context_for(args["space_id"])
         if name == "questionnaire_get_load_context":
-            return questionnaire.questionnaire_get_load_context(project_id, args.get("space_id"), store=store)
+            result = questionnaire.questionnaire_get_load_context(project_id, args.get("space_id"), store=store)
+            return {key: result[key] for key in (
+                "per_space_requirements", "declared_loads", "special_devices"
+            )}
         if name == "playbook_get_object_rules":
-            return playbook.playbook_get_object_rules(supabase_client, args["device_type"], args["space_type"], args.get("project_standard"))
+            result = playbook.playbook_get_object_rules(
+                supabase_client, args["device_type"], args["space_type"], args["project_standard"]
+            )
+            return {"rules": result["rules"]}
         if name == "playbook_query_devices":
-            return playbook.playbook_query_devices(supabase_client, args["category"], args.get("filters"))
+            result = playbook.playbook_query_devices(
+                supabase_client, args["category"], args["filters"]
+            )
+            return [{key: device.get(key) for key in (
+                "module_id", "name", "ifc_class", "specs", "rated_power", "geometry_ref"
+            )} for device in result["devices"]]
         if name == "playbook_get_load_class":
-            return playbook.playbook_get_load_class(supabase_client, args["space_type"], args["device_category"])
+            result = playbook.playbook_get_load_class(
+                supabase_client, args["space_type"], args["device_category"]
+            )
+            rows = result["load_classes"]
+            exact = [row for row in rows if str(row.get("load_class_name") or "").casefold()
+                     == args["device_category"].casefold()]
+            row = exact[0] if len(exact) == 1 else rows[0] if len(rows) == 1 else {}
+            return {key: row.get(key) for key in (
+                "load_class_id", "load_class_name", "load_type"
+            )}
         if name == "playbook_get_terminal_class":
-            return playbook.playbook_get_terminal_class(supabase_client, args["device_type"], args.get("connection_requirements"))
+            requirements = args["connection_requirements"]
+            result = playbook.playbook_get_terminal_class(
+                supabase_client, args["device_type"], requirements
+            )
+            rows = result["terminal_classes"]
+            exact = [row for row in rows if str(row.get("terminal_class_name") or "").casefold()
+                     == args["device_type"].casefold()]
+            row = exact[0] if len(exact) == 1 else rows[0] if len(rows) == 1 else {}
+            return {
+                "terminal_class_id": row.get("terminal_class_id"),
+                "voltage": requirements.get("voltage_v", requirements.get("voltage")),
+                "phases": row.get("phases", requirements.get("phases")),
+                "connection_specs": row.get("connection_specs"),
+            }
         if name == "ifc_list_placed_devices":
             devices = existing_devices()
             return ifc_read.ifc_list_placed_devices(args.get("space_id"), args.get("storey_id"), placements=devices)
@@ -112,10 +162,10 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
             rule_rows = rules_for(args["proposals"], contexts)
             return placement.engine_validate_placements(args["proposals"], contexts, rule_rows, existing_devices=existing_devices())
         if name == "draft_save_placements":
-            space_ids = {str(p.get("space_id")) for p in args["proposals"] if p.get("space_id")}
-            contexts = {sid: context_for(sid) for sid in space_ids}
-            rules = rules_for(args["proposals"], contexts)
-            checked = placement.engine_validate_placements(args["proposals"], contexts, rules, existing_devices=existing_devices())
+            supplied_validation = args["validation_result"]
+            if not supplied_validation.get("valid") or supplied_validation.get("errors"):
+                raise ValueError("validation_result đầu vào chưa hợp lệ.")
+            checked = validate_proposals(args["proposals"])
             return ifc_write.draft_save_placements(project_id, args["proposals"], checked, store)
         if name == "ifc_apply_placements_batch":
             plan = store.get_plan(project_id, args["plan_id"])
@@ -127,38 +177,37 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
             return ifc_write.ifc_apply_placements_batch(args["plan_id"], args["version"], project_id, store,
                                                         model_adapter_provider() if model_adapter_provider else None, "approved")
         if name == "ifc_modify_device":
-            if args.get("plan_id"):
-                source = store.get_plan(project_id, args["plan_id"])
-                if not source or source["version"] != args.get("version"):
-                    raise ValueError("Không tìm thấy đúng plan/version.")
-                updated = [dict(p) for p in source["proposals"]]
-                target = next((p for p in updated if p.get("proposed_id") == args["device_id"] or p.get("element_id") == args["device_id"]), None)
-                if target is None:
-                    raise KeyError("Thiết bị không có trong phương án.")
-                target.update(args["changes"])
-                contexts = {str(p.get("space_id")): context_for(str(p.get("space_id"))) for p in updated if p.get("space_id")}
-                validation = placement.engine_validate_placements(updated, contexts, [], existing_devices=existing_devices())
-                saved = ifc_write.draft_save_placements(project_id, updated, validation, store)
-                return {"status": "draft_updated", "new_plan": saved, "updated_device": target, "validation_result": validation}
-            approved = bool(args.get("plan_id") and is_plan_approved and is_plan_approved(args["plan_id"], int(args.get("version", 0))))
-            if not approved:
-                raise PermissionError("Sửa IFC chính thức cần plan/version đã được Orchestrator xác nhận duyệt.")
-            return ifc_write.ifc_modify_device(args["device_id"], args["changes"], model_adapter_provider() if model_adapter_provider else None, approved=True)
+            source = store.get_plan(project_id, args["plan_id"])
+            if not source or source["version"] != args["version"]:
+                raise ValueError("Không tìm thấy đúng plan/version.")
+            updated = [dict(proposal) for proposal in source["proposals"]]
+            target = next((proposal for proposal in updated
+                           if proposal.get("proposed_id") == args["device_id"]
+                           or proposal.get("element_id") == args["device_id"]), None)
+            if target is None:
+                raise KeyError("Thiết bị không có trong phương án.")
+            immutable_fields = {"proposed_id", "element_id"}
+            if immutable_fields.intersection(args["changes"]):
+                raise ValueError("Không được thay đổi proposed_id hoặc element_id của thiết bị.")
+            target.update(args["changes"])
+            validation = validate_proposals(updated)
+            saved = ifc_write.draft_save_placements(project_id, updated, validation, store)
+            return {"status": "draft_updated", "new_plan": saved,
+                    "updated_device": target, "validation_result": validation}
         if name == "ifc_remove_device":
-            if args.get("plan_id"):
-                source = store.get_plan(project_id, args["plan_id"])
-                if not source or source["version"] != args.get("version"):
-                    raise ValueError("Không tìm thấy đúng plan/version.")
-                result = ifc_write.ifc_remove_device(args["device_id"], args["reason"], None, draft_proposals=source["proposals"])
-                contexts = {str(p.get("space_id")): context_for(str(p.get("space_id"))) for p in result["proposals"] if p.get("space_id")}
-                validation = placement.engine_validate_placements(result["proposals"], contexts, [], existing_devices=existing_devices())
-                saved = ifc_write.draft_save_placements(project_id, result["proposals"], validation, store,
-                                                       operation_notes={"removed_device": args["device_id"], "reason": args["reason"]})
-                return {**result, "new_plan": saved, "validation_result": validation}
-            approved = bool(args.get("plan_id") and is_plan_approved and is_plan_approved(args["plan_id"], int(args.get("version", 0))))
-            if not approved:
-                raise PermissionError("Xóa IFC chính thức cần plan/version đã được Orchestrator xác nhận duyệt.")
-            return ifc_write.ifc_remove_device(args["device_id"], args["reason"], model_adapter_provider() if model_adapter_provider else None, approved=True)
+            source = store.get_plan(project_id, args["plan_id"])
+            if not source or source["version"] != args["version"]:
+                raise ValueError("Không tìm thấy đúng plan/version.")
+            result = ifc_write.ifc_remove_device(
+                args["device_id"], args["reason"], None,
+                draft_proposals=source["proposals"],
+            )
+            validation = validate_proposals(result["proposals"])
+            saved = ifc_write.draft_save_placements(
+                project_id, result["proposals"], validation, store,
+                operation_notes={"removed_device": args["device_id"], "reason": args["reason"]},
+            )
+            return {**result, "new_plan": saved, "validation_result": validation}
         if name == "calc_preliminary_load":
             plan = store.get_plan(project_id, args.get("plan_id")) if args.get("plan_id") else None
             if args.get("plan_id") and plan is None:

@@ -73,6 +73,12 @@ def playbook_get_load_class(client: Any, space_type: str, device_category: str) 
     matches = [r for r in rows if query and (_contains(r.get("ten_lop_phu_tai"), query) or _contains(r.get("nhom_phu_tai"), query))]
     if not matches and query:
         matches = [r for r in rows if any(t in query for t in _norm(r.get("ten_lop_phu_tai")).split() if len(t) > 3)]
+    # When the category is broad (for example "ổ cắm"), prefer a class whose
+    # name explicitly matches the requested room; generic classes remain valid
+    # fallbacks when the Playbook has no room-specific row.
+    room_matches = [r for r in matches if _contains(r.get("ten_lop_phu_tai"), space_type)]
+    if room_matches:
+        matches = room_matches
     load_classes = [{"load_class_id": r.get("ma_lop_phu_tai"), "load_class_name": r.get("ten_lop_phu_tai"),
                               "load_type": r.get("nhom_phu_tai"), "connected_power_range_W": [r.get("cong_suat_min_w"), r.get("cong_suat_max_w")],
                               "demand_factor": r.get("he_so_nhu_cau"), "diversity_factor": None,
@@ -103,8 +109,14 @@ def playbook_get_terminal_class(client: Any, device_type: str, connection_requir
             continue
         if phases and phases == 1 and "mot pha" not in supply:
             continue
+        resolved_phases = phases
+        if resolved_phases is None:
+            if "mot pha" in supply:
+                resolved_phases = 1
+            elif "ba pha" in supply:
+                resolved_phases = 3
         output.append({"terminal_class_id": row.get("ma_lop_dau_cuoi"), "terminal_class_name": row.get("ten_lop_dau_cuoi"),
-                       "voltage": requirements.get("voltage_v"), "phases": phases,
+                       "voltage": requirements.get("voltage_v", requirements.get("voltage")), "phases": resolved_phases,
                        "connection_specs": {"supply_type": row.get("kieu_cap_dien"), "connection_type": row.get("kieu_diem_ket_noi"),
                                             "circuit_group": row.get("nhom_mach"), "power_factor": row.get("he_so_cong_suat_tam"),
                                             "load_class_id": row.get("lop_phu_tai_ma"), "space_scope": row.get("khong_gian_ap_dung"),
@@ -144,12 +156,20 @@ def playbook_get_object_rules(client: Any, device_type: str, space_type: str, pr
         rules.append({"rule_id": f"room:{row.get('loai_khong_gian')}", "quantity_rule": None, "spacing": None,
                       "mounting_height": row.get("cao_do_lap_dat"), "host_type": None,
                       "constraints": [row.get("nguyen_tac_bo_tri"), row.get("kiem_tra_bo_sung"), row.get("gioi_han_canh_bao")],
-                      "source": None, "source_status": row.get("loai_du_lieu"), "scope": row.get("loai_khong_gian"), "raw_rule": row})
+                      "source": "Playbook > Quy tắc phòng", "source_status": row.get("loai_du_lieu"),
+                      "scope": row.get("loai_khong_gian"), "raw_rule": row})
     for row in applicable_design:
         rules.append({"rule_id": row.get("ma_quy_tac"), "quantity_rule": None, "spacing": None, "mounting_height": None,
                       "host_type": None, "constraints": [row.get("dau_vao_can_thiet"), row.get("tieu_chi_xu_ly")],
                       "source": row.get("nguon_tham_khao"), "source_status": row.get("trang_thai_xac_nhan"),
                       "scope": row.get("phan_loai"), "raw_rule": row})
+    if project_standard:
+        # Apply the requested standard to rules with a normative source. Keep
+        # qualitative room guidance, which is sourced to its Playbook sheet,
+        # separate from claims that it belongs to a particular standard.
+        rules = [rule for rule in rules
+                 if rule.get("source") == "Playbook > Quy tắc phòng"
+                 or _contains(rule.get("source"), project_standard)]
     warnings = []
     if not rules:
         warnings.append("Không tìm thấy rule thiết kế khớp thiết bị/phòng trong Playbook.")

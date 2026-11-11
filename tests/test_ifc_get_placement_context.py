@@ -21,7 +21,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from tools.phase2 import build_phase2_toolset
 
 
-DEFAULT_IFC_PATH = Path(__file__).resolve().parents[2] / "A.ifc"
+IFC_DIRECTORY = Path(__file__).resolve().parents[2]
+DEFAULT_IFC_PATH = IFC_DIRECTORY / ("ctr.ifc" if (IFC_DIRECTORY / "ctr.ifc").is_file() else "A.ifc")
 IFC_PATH = Path(os.environ.get("A_IFC_PATH", str(DEFAULT_IFC_PATH)))
 OUTPUT_FIELDS = {
     "space_type", "geometry", "walls", "ceiling", "doors", "windows",
@@ -53,6 +54,9 @@ def main() -> None:
 
     assert set(result) == OUTPUT_FIELDS, f"Output fields không đúng: {sorted(result)}"
     assert result["space_type"], "Không nhận diện được loại phòng."
+    assert all(item.get("ifc_class") != "IfcSlab" for item in result["obstacles"]), (
+        "Sàn/slab không được phân loại thành vật cản trong phòng."
+    )
     estimated_area = result["geometry"].get("area_bbox_estimate_m2")
     assert estimated_area is not None and estimated_area > 0.01, (
         "Hộp bao phòng thiếu kích thước hợp lệ hoặc bị đổi đơn vị sai."

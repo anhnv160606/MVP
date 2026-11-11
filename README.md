@@ -40,7 +40,7 @@ phase2 = build_phase2_toolset(
 
 ## Chạy smoke test Tool 1–6
 
-Chạy từng file từ thư mục `MVP`. Tool 1 đọc `A.ifc` ở thư mục cha (cần cài `ifcopenshell`); Tool 2–6 dùng dữ liệu mẫu đại diện lấy từ Playbook nên không cần kết nối Supabase.
+Chạy từng file từ thư mục `MVP`. Tool 1 đọc `ctr.ifc` ở thư mục cha nếu có, nếu không thì dùng `A.ifc` (cần cài `ifcopenshell`); Tool 2–6 dùng dữ liệu mẫu đại diện lấy từ Playbook nên không cần kết nối Supabase.
 
 ```powershell
 python tests\test_ifc_get_placement_context.py

@@ -297,7 +297,7 @@ def _shape_bboxes(model: Any, entities: list[Any]) -> dict[str, dict[str, Any]]:
         return {}
 
 
-def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, Any]:
+def ifc_get_placement_context(space_id: str, *, model: Any) -> dict[str, Any]:
     """Internal IFC reader; the public Agent tool only receives ``space_id``.
 
     The API/Phase 2 dispatcher owns loading and lifecycle of ``model`` and
@@ -365,6 +365,10 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
             token in kind for token in ("wall", "slab", "door", "window", "covering", "column", "furnishing", "furniture", "buildingelementproxy")
         ):
             continue
+        # A floor slab is not an obstacle to device placement. Keep only slabs
+        # explicitly classified as ceilings; missing ceiling data stays visible.
+        if "slab" in kind and "ceiling" not in str(_get(item, "PredefinedType") or "").casefold():
+            continue
         # The IFC fallback may return every element on a storey. Filter by
         # cheap placement coordinates first so we do not mesh unrelated rooms.
         if membership_method == "storey_geometry_candidates":
@@ -418,8 +422,11 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
                     result["ceiling"] = record
                 else:
                     result["warnings"].append("Nhiều bề mặt trần được liên kết; cần chọn bề mặt lắp thiết bị.")
-            elif "wall" in kind or "slab" in kind:
-                result["walls" if "wall" in kind else "obstacles"].append(record)
+            elif "wall" in kind:
+                result["walls"].append(record)
+            elif "slab" in kind:
+                # Non-ceiling slabs were filtered before geometry processing.
+                continue
             elif any(t in kind for t in ("column", "furnishing", "furniture", "buildingelementproxy")):
                 result["obstacles"].append(record)
     missing = []

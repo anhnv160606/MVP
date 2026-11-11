@@ -7,19 +7,19 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 
 from playbook_fixture import SamplePlaybookClient
-from tools.playbook import playbook_get_load_class
+from tools.phase2 import build_phase2_toolset
 
 
 def main():
-    result = playbook_get_load_class(
-        SamplePlaybookClient(), space_type="Phòng ngủ", device_category="Chiếu sáng chung"
+    toolset = build_phase2_toolset(
+        project_id="tool-5-test-project", store=None,
+        supabase_client=SamplePlaybookClient(),
     )
-    matches = result["load_classes"]
-    if len(matches) != 1:
-        raise AssertionError(f"Mong đợi đúng một lớp phụ tải, nhận được {len(matches)}.")
-    row = matches[0]
-    output = {"load_class_id": row["load_class_id"],
-              "load_class_name": row["load_class_name"], "load_type": row["load_type"]}
+    output = toolset["execute"]("playbook_get_load_class", {
+        "space_type": "Phòng ngủ", "device_category": "ổ cắm"
+    })
+    assert set(output) == {"load_class_id", "load_class_name", "load_type"}
+    assert output["load_class_id"] == "TẢI-003"
     sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     print(json.dumps(output, ensure_ascii=False, indent=2))
 

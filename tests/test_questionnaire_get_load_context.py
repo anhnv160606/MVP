@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.questionnaire import questionnaire_get_load_context
+from tools.phase2 import build_phase2_toolset
 
 
 class SampleQuestionnaireStore:
@@ -31,16 +31,16 @@ class SampleQuestionnaireStore:
 
 
 def main() -> None:
-    result = questionnaire_get_load_context(
-        project_id="tool-2-test-project",
-        space_id="bedroom-02",
-        store=SampleQuestionnaireStore(),
+    toolset = build_phase2_toolset(
+        project_id="tool-2-test-project", store=SampleQuestionnaireStore(),
+        supabase_client=None,
     )
-    output = {key: result[key] for key in (
-        "per_space_requirements", "declared_loads", "special_devices"
-    )}
+    result = toolset["execute"](
+        "questionnaire_get_load_context", {"space_id": "bedroom-02"}
+    )
+    assert set(result) == {"per_space_requirements", "declared_loads", "special_devices"}
     sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
-    print(json.dumps(output, ensure_ascii=False, indent=2))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

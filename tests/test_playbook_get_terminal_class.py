@@ -7,20 +7,19 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 
 from playbook_fixture import SamplePlaybookClient
-from tools.playbook import playbook_get_terminal_class
+from tools.phase2 import build_phase2_toolset
 
 
 def main():
-    result = playbook_get_terminal_class(
-        SamplePlaybookClient(), device_type="Điểm đèn trần",
-        connection_requirements={"voltage_v": 220, "phases": 1},
+    toolset = build_phase2_toolset(
+        project_id="tool-6-test-project", store=None,
+        supabase_client=SamplePlaybookClient(),
     )
-    matches = result["terminal_classes"]
-    if len(matches) != 1:
-        raise AssertionError(f"Mong đợi đúng một lớp đầu cuối, nhận được {len(matches)}.")
-    row = matches[0]
-    output = {"terminal_class_id": row["terminal_class_id"], "voltage": row["voltage"],
-              "phases": row["phases"], "connection_specs": row["connection_specs"]}
+    output = toolset["execute"]("playbook_get_terminal_class", {
+        "device_type": "Điểm đèn trần",
+        "connection_requirements": {"voltage": 220},
+    })
+    assert set(output) == {"terminal_class_id", "voltage", "phases", "connection_specs"}
     sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
 
