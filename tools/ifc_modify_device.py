@@ -2,13 +2,13 @@
 
 import json
 import sqlite3
-from copy import deepcopy
 
 from database.placement_application import get_applied_placement_plan, validate_plan_key
 from database.project_store import PlacementVersionConflict, ProjectStore, placement_diff
 from tools.draft_save_placements import (
+    PlacementValidationUnavailable,
     draft_save_placements,
-    validate_placement_result,
+    run_placement_validator,
     validate_proposals,
 )
 
@@ -127,19 +127,9 @@ def ifc_modify_device(
 
         device_spec(project_id, plan_id, updated)
 
-        if not callable(validate_placements) or placement_context is None or rules is None:
-            return _failure("validation_unavailable", "validator_required",
-                            "Provide engine_validate_placements, placement_context and rules")
-        try:
-            validation = validate_placements(
-                proposals=deepcopy(candidate),
-                placement_context=placement_context,
-                rules=rules,
-            )
-            validate_placement_result(validation)
-            validation = _json_copy(validation)
-        except Exception as error:
-            return _failure("validation_unavailable", "validator_failed", error)
+        validation = run_placement_validator(
+            candidate, validate_placements=validate_placements, placement_context=placement_context, rules=rules,
+        )
         if not validation["valid"]:
             return _result("validation_failed", validation, plan_id=plan_id, version=expected_version)
         if not placement_diff(previous, candidate)["updated"]:
@@ -151,6 +141,8 @@ def ifc_modify_device(
         )
         return _result(saved["status"], validation, updated_device=updated,
                        plan_id=plan_id, version=saved["version"])
+    except PlacementValidationUnavailable as error:
+        return _failure("validation_unavailable", error.code, error)
     except PlacementVersionConflict as error:
         return _failure("conflict", "version_conflict", error)
     except (ValueError, TypeError, OverflowError, ImportError, OSError, RuntimeError, sqlite3.Error) as error:

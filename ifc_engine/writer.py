@@ -254,21 +254,42 @@ def _verify_device(model, spec):
     return device, model.by_id(pset["id"]), host_link
 
 
-def _remove_device(model, spec):
+def _inspect_removal(model, spec):
     device, pset, host_link = _verify_device(model, spec)
-    for reference in model.get_inverse(device):
-        if reference.is_a() in {"IfcRelDefinesByType", "IfcRelContainedInSpatialStructure"}:
-            continue
-        if reference.is_a("IfcRelDefinesByProperties") and reference.RelatingPropertyDefinition == pset:
-            continue
-        if reference == host_link:
-            continue
-        raise PlacementApplicationError(
-            f"Cannot replace or remove {spec.guid}: it has an external {reference.is_a()} reference"
-        )
+    managed = set()
+    references = set(model.get_inverse(device))
+    for reference in references:
+        if (
+            reference.is_a() in {"IfcRelDefinesByType", "IfcRelContainedInSpatialStructure"}
+            or (reference.is_a("IfcRelDefinesByProperties") and reference.RelatingPropertyDefinition == pset)
+            or reference == host_link
+        ):
+            managed.add(reference)
     # Placement-relative children can reference the placement rather than the device.
-    if device.ObjectPlacement.ReferencedByPlacements:
-        raise PlacementApplicationError(f"Device {spec.guid} has placement-relative children")
+    references.update(device.ObjectPlacement.ReferencedByPlacements)
+    affected = [
+        {
+            "ifc_class": reference.is_a(), "step_id": reference.id(),
+            "global_id": getattr(reference, "GlobalId", None),
+            "blocks_removal": reference not in managed,
+        }
+        for reference in sorted(references, key=lambda item: item.id())
+    ]
+    return device, host_link, affected
+
+
+def get_removal_references(model, spec):
+    """Inspect the same relationships that the writer checks during apply."""
+    return _inspect_removal(model, spec)[2]
+
+
+def _remove_device(model, spec):
+    device, host_link, affected = _inspect_removal(model, spec)
+    blocker = next((reference for reference in affected if reference["blocks_removal"]), None)
+    if blocker is not None:
+        raise PlacementApplicationError(
+            f"Cannot replace or remove {spec.guid}: it has an external {blocker['ifc_class']} reference"
+        )
     if host_link is not None:
         model.remove(host_link)
     ifcopenshell.api.root.remove_product(model, product=device)

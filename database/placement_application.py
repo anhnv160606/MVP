@@ -107,7 +107,7 @@ def get_model_row(connection, project_id, version=None):
     ).fetchone()
 
 
-def get_applied_placement_plan(project_id, plan_id):
+def get_applied_placement_plan(project_id, plan_id, *, required=True):
     """Read the applied proposals and current model path from the same DB snapshot."""
     with application_transaction() as (connection, snapshot_dir):
         applied_version = connection.execute(
@@ -116,6 +116,8 @@ def get_applied_placement_plan(project_id, plan_id):
             (project_id, plan_id),
         ).fetchone()[0]
         if applied_version is None:
+            if not required:
+                return [], None
             raise PlacementApplicationError("This plan has not been applied to IFC")
         proposals, _ = load_plan(connection, project_id, plan_id, applied_version)
         row = get_model_row(connection, project_id)

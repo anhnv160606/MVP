@@ -23,6 +23,20 @@ CREATE TABLE IF NOT EXISTS placement_plan_versions (
     PRIMARY KEY (project_id, plan_id, version)
 )
 """
+_CREATE_PLACEMENT_REMOVALS = """
+CREATE TABLE IF NOT EXISTS placement_removals (
+    project_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    proposed_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    target TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    affected_references TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (project_id, plan_id, version)
+)
+"""
 
 
 class PlacementPlanNotFound(LookupError):
@@ -56,7 +70,7 @@ class ProjectStore:
         self.db_path = Path(configured_path if db_path is None else db_path)
 
     def save_placement_plan(
-        self, project_id, proposals, validation_result, *, plan_id, expected_version
+        self, project_id, proposals, validation_result, *, plan_id, expected_version, removal=None
     ):
         """Append a draft snapshot in one transaction."""
         try:
@@ -107,6 +121,22 @@ class ProjectStore:
                     proposals_json, validation_json, _encode(diff_summary),
                 ),
             )
+            if removal is not None:
+                if (
+                    diff_summary["removed"] != [removal["proposed_id"]]
+                    or diff_summary["added"] or diff_summary["updated"]
+                ):
+                    raise ValueError("Removal audit must match the only device change in the revision")
+                connection.execute(_CREATE_PLACEMENT_REMOVALS)
+                connection.execute(
+                    """INSERT INTO placement_removals
+                       (project_id, plan_id, version, proposed_id, device_id, target, reason, affected_references)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        project_id, plan_id, version, removal["proposed_id"], removal["device_id"],
+                        removal["target"], removal["reason"], _encode(removal["affected_references"]),
+                    ),
+                )
 
         return {
             "plan_id": plan_id,
@@ -139,3 +169,26 @@ class ProjectStore:
         for field in ("proposals", "validation_result", "diff_summary"):
             snapshot[field] = json.loads(snapshot[field])
         return snapshot
+
+    def get_placement_removal(self, project_id, plan_id, version):
+        """Return the deletion request recorded for a specific draft revision."""
+        if not self.db_path.is_file():
+            return None
+        read_uri = self.db_path.resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(read_uri, uri=True)) as connection:
+            connection.row_factory = sqlite3.Row
+            table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'placement_removals'"
+            ).fetchone()
+            if table is None:
+                return None
+            row = connection.execute(
+                """SELECT * FROM placement_removals
+                   WHERE project_id = ? AND plan_id = ? AND version = ?""",
+                (project_id, plan_id, version),
+            ).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        record["affected_references"] = json.loads(record["affected_references"])
+        return record

@@ -1,8 +1,16 @@
 """Phase 2 tool for saving electrical placement drafts for review."""
 
+import json
 import math
+from copy import deepcopy
 
 from database.project_store import ProjectStore
+
+
+class PlacementValidationUnavailable(RuntimeError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
 
 
 def _require_identifier(value, field):
@@ -58,6 +66,22 @@ def validate_placement_result(result):
             raise ValueError(f"validation_result.{field} must be a list")
     if result["valid"] and result["errors"]:
         raise ValueError("validation_result cannot be valid while reporting errors")
+
+
+def run_placement_validator(proposals, *, validate_placements, placement_context, rules):
+    """Validate the candidate with the backend's engine without exposing it to mutation."""
+    if not callable(validate_placements) or placement_context is None or rules is None:
+        raise PlacementValidationUnavailable(
+            "validator_required", "Provide engine_validate_placements, placement_context and rules",
+        )
+    try:
+        result = validate_placements(
+            proposals=deepcopy(proposals), placement_context=placement_context, rules=rules,
+        )
+        validate_placement_result(result)
+        return json.loads(json.dumps(result, allow_nan=False, sort_keys=True))
+    except Exception as error:
+        raise PlacementValidationUnavailable("validator_failed", str(error)) from error
 
 
 def draft_save_placements(
