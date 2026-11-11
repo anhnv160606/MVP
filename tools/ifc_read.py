@@ -264,8 +264,8 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
                 "doors": [], "windows": [], "obstacles": [],
                 "coordinate_system": {"kind": "IFC project coordinates", "unit": "unknown"},
                 "missing_data": ["space_not_found", "space_geometry", "walls", "ceiling", "doors", "windows",
-                                 "obstacles", "coordinate_system", "unit_conversion", "area_m2", "space_type"],
-                "warnings": ["Không tìm thấy không gian trong IFC; chưa thể lập phương án."]}
+                                 "obstacles", "coordinate_system", "unit_conversion", "area_m2", "space_type",
+                                 "Không tìm thấy không gian trong IFC; chưa thể lập phương án."]}
 
     name = _decode_ifc_text(_get(space, "LongName") or _get(space, "Name") or _get(space, "name"))
     space_type, space_type_source = _room_type(space)
@@ -415,8 +415,7 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
         "windows": result.get("windows", []),
         "obstacles": result.get("obstacles", []),
         "coordinate_system": coordinate_system,
-        "missing_data": result["missing_data"],
-        "warnings": result["warnings"],
+        "missing_data": result["missing_data"] + result["warnings"],
     }
 
 
