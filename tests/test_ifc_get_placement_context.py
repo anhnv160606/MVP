@@ -69,6 +69,10 @@ class TestIfcGetPlacementContext(unittest.TestCase):
         self.assertEqual(set(result), OUTPUT_FIELDS)
         self.assertEqual(result["space_type"], "Phòng ngủ")
         self.assertIsInstance(result["geometry"], dict)
+        estimated_area = result["geometry"].get("area_bbox_estimate_m2")
+        self.assertIsNotNone(estimated_area, "IFC room bbox should produce an explicitly labeled area estimate")
+        self.assertGreater(estimated_area, 0.01, "IFC room geometry may have been scaled down twice")
+        self.assertNotIn("coordinate_system", result["missing_data"])
         self.assertIsInstance(result["missing_data"], list)
         self.assertIsInstance(result["warnings"], list)
 
@@ -85,7 +89,9 @@ class TestIfcGetPlacementContext(unittest.TestCase):
             "missing_data": result["missing_data"],
             "warnings": result["warnings"],
         }
-        print("\nTool 1 result:\n" + json.dumps(summary, ensure_ascii=False, indent=2, default=str))
+        # ASCII escapes keep the report printable in Windows consoles using
+        # legacy code pages that cannot encode every Vietnamese character.
+        print("\nTool 1 result:\n" + json.dumps(summary, ensure_ascii=True, indent=2, default=str))
 
 
 if __name__ == "__main__":

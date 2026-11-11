@@ -201,7 +201,7 @@ def _unit_scale(model: Any) -> float | None:
         return None
 
 
-def _area_m2(space: Any, model: Any, scale: float) -> float | None:
+def _area_m2(space: Any, model: Any) -> float | None:
     value = _get(space, "area_m2")
     if value is not None:
         return float(value)
@@ -212,20 +212,25 @@ def _area_m2(space: Any, model: Any, scale: float) -> float | None:
             for qto in psets.values():
                 for key in ("NetFloorArea", "GrossFloorArea", "NetArea", "GrossArea"):
                     if qto.get(key) is not None:
-                        return float(qto[key]) * scale * scale
+                        from ifcopenshell.util.unit import calculate_unit_scale
+                        area_scale = float(calculate_unit_scale(model, "AREAUNIT"))
+                        return float(qto[key]) * area_scale
         except Exception:
             pass
     return None
 
 
-def _shape_bbox(model: Any, entity: Any, scale: float) -> dict[str, Any] | None:
+def _shape_bbox(model: Any, entity: Any) -> dict[str, Any] | None:
     try:
         import ifcopenshell.geom
         settings = ifcopenshell.geom.settings()
         settings.set("use-world-coords", True)
+        # IfcOpenShell geometry output is SI metres by default. Do not apply
+        # the IFC project-unit scale a second time here.
+        settings.set("convert-back-units", False)
         shape = ifcopenshell.geom.create_shape(settings, entity)
         vertices = list(shape.geometry.verts)
-        points = [(vertices[i]*scale, vertices[i+1]*scale, vertices[i+2]*scale) for i in range(0, len(vertices)-2, 3)]
+        points = [(vertices[i], vertices[i+1], vertices[i+2]) for i in range(0, len(vertices)-2, 3)]
         if not points:
             return None
         lo = [min(p[i] for p in points) for i in range(3)]
@@ -269,9 +274,9 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
     scale = scale_value if unit_known else 1.0
     geometry = _get(space, "geometry")
     if geometry is None and model is not None:
-        geometry = _shape_bbox(model, space, scale)
+        geometry = _shape_bbox(model, space)
     result = {"space_id": str(space_id), "space_type": space_type, "space_type_source": space_type_source,
-              "name": name, "area_m2": _area_m2(space, model, scale),
+              "name": name, "area_m2": _area_m2(space, model),
               "geometry": geometry, "walls": list(_get(space, "walls", []) or []),
               "ceiling": _get(space, "ceiling"), "doors": list(_get(space, "doors", []) or []),
               "windows": list(_get(space, "windows", []) or []), "obstacles": list(_get(space, "obstacles", []) or []),
@@ -303,7 +308,7 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
                 token in kind for token in ("wall", "slab", "door", "window", "covering", "column", "furnishing", "furniture", "buildingelementproxy")
             ):
                 continue
-            item_geometry = _shape_bbox(model, item, scale)
+            item_geometry = _shape_bbox(model, item)
             if membership_method == "storey_geometry_candidates":
                 overlap = _bbox_intersects(result.get("geometry"), item_geometry)
                 if overlap is False:
@@ -349,8 +354,6 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
         missing.append("door_opening_direction")
     if any(not (x.get("geometry") or x.get("bbox")) for group in ("doors", "windows", "obstacles") for x in result[group] if isinstance(x, dict)):
         missing.append("opening_or_obstacle_geometry")
-    if not result.get("coordinate_system"):
-        missing.append("coordinate_system")
     if not unit_known:
         missing.append("unit_conversion")
     if result.get("area_m2") is None:
