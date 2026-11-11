@@ -31,3 +31,5 @@ snapshot = ProjectStore().get_placement_plan("project-01", saved["plan_id"], sav
 ```sh
 python -m unittest discover -s tests -v
 ```
+
+Các bài kiểm thử IFC trong bộ test cần cài thêm dependency theo [hướng dẫn áp dụng phương án vào IFC](docs/ifc_apply_placements_batch.md). Để chỉ chạy bộ kiểm thử lưu nháp, thêm `-p test_draft_save_placements.py` vào lệnh trên.

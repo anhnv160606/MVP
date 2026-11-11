@@ -37,7 +37,7 @@ def _encode(value):
     return json.dumps(value, allow_nan=False, sort_keys=True)
 
 
-def _diff(previous, current):
+def placement_diff(previous, current):
     before = {item["proposed_id"]: _encode(item) for item in previous}
     after = {item["proposed_id"]: _encode(item) for item in current}
     shared = before.keys() & after.keys()
@@ -95,7 +95,7 @@ class ProjectStore:
                 version = latest_version + 1
                 previous = json.loads(previous_json)
 
-            diff_summary = _diff(previous, snapshot)
+            diff_summary = placement_diff(previous, snapshot)
             connection.execute(
                 """
                 INSERT INTO placement_plan_versions
