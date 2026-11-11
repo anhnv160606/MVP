@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+database/project_state.db
+database/project_state.db-shm
+database/project_state.db-wal
+.env
+.venv/
