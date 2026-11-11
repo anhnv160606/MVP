@@ -2,7 +2,6 @@
 
 import json
 import math
-import sqlite3
 from copy import deepcopy
 
 from database.placement_application import (
@@ -10,11 +9,16 @@ from database.placement_application import (
     application_transaction,
     get_applied_placement_plan,
     get_model_row,
+    has_application,
+    latest_applied_version,
+    latest_approved_version,
     load_plan,
     publish_model,
+    record_application,
     validate_plan_key,
     verified_model_path,
 )
+from database.postgres import ProjectDatabaseError
 from database.project_store import (
     PlacementPlanNotFound,
     PlacementVersionConflict,
@@ -75,9 +79,9 @@ def ifc_apply_placements_batch(approved_plan_id: str, version: int, project_id: 
     """
     try:
         validate_plan_key(project_id, approved_plan_id, version)
-        with application_transaction() as (connection, snapshot_dir):
+        with application_transaction(project_id) as (connection, snapshot_dir):
             return _apply_approved_batch(connection, snapshot_dir, project_id, approved_plan_id, version)
-    except (PlacementApplicationError, ImportError, OSError, RuntimeError, sqlite3.Error) as error:
+    except (PlacementApplicationError, ImportError, OSError, RuntimeError, ProjectDatabaseError) as error:
         return _batch_result("failed", errors=[str(error)])
 
 
@@ -149,7 +153,7 @@ def ifc_modify_device(
         return _modify_failure("validation_unavailable", error.code, error)
     except PlacementVersionConflict as error:
         return _modify_failure("conflict", "version_conflict", error)
-    except (ValueError, TypeError, OverflowError, ImportError, OSError, RuntimeError, sqlite3.Error) as error:
+    except (ValueError, TypeError, OverflowError, ImportError, OSError, RuntimeError, ProjectDatabaseError) as error:
         return _modify_failure("failed", "edit_failed", error)
 
 
@@ -218,7 +222,7 @@ def ifc_remove_device(
         return _remove_result("validation_unavailable", errors=[str(error)])
     except PlacementVersionConflict as error:
         return _remove_result("conflict", errors=[str(error)])
-    except (PlacementPlanNotFound, ValueError, TypeError, ImportError, OSError, RuntimeError, sqlite3.Error) as error:
+    except (PlacementPlanNotFound, ValueError, TypeError, ImportError, OSError, RuntimeError, ProjectDatabaseError) as error:
         return _remove_result("failed", errors=[str(error)])
 
 
@@ -316,18 +320,11 @@ def _batch_result(status, model_version=None, *, created=(), updated=(), removed
 
 def _apply_approved_batch(connection, snapshot_dir, project_id, plan_id, version):
     proposals, validation = load_plan(connection, project_id, plan_id, version)
-    approved_version = connection.execute(
-        "SELECT MAX(version) FROM placement_approvals WHERE project_id = ? AND plan_id = ?",
-        (project_id, plan_id),
-    ).fetchone()[0]
+    approved_version = latest_approved_version(connection, project_id, plan_id)
     if approved_version is None or validation.get("valid") is not True or validation.get("errors"):
         raise PlacementApplicationError("This placement version has not passed validation and approval")
 
-    receipt = connection.execute(
-        """SELECT MAX(plan_version) FROM placement_applications
-           WHERE project_id = ? AND plan_id = ?""",
-        (project_id, plan_id),
-    ).fetchone()[0]
+    receipt = latest_applied_version(connection, project_id, plan_id)
     model_row = get_model_row(connection, project_id)
     if model_row is None:
         raise PlacementApplicationError("Register the project's IFC baseline before applying a plan")
@@ -335,12 +332,7 @@ def _apply_approved_batch(connection, snapshot_dir, project_id, plan_id, version
     model_version = model_row["version"]
 
     if receipt is not None and version <= receipt:
-        already_applied = connection.execute(
-            """SELECT 1 FROM placement_applications
-               WHERE project_id = ? AND plan_id = ? AND plan_version = ?""",
-            (project_id, plan_id, version),
-        ).fetchone()
-        if already_applied is not None:
+        if has_application(connection, project_id, plan_id, version):
             return _batch_result("already_applied", model_version)
         raise PlacementApplicationError("A newer version of this placement plan has already been applied")
     if approved_version != version:
@@ -364,10 +356,7 @@ def _apply_approved_batch(connection, snapshot_dir, project_id, plan_id, version
         )
     else:
         verify_batch(model, current, removed)
-    connection.execute(
-        "INSERT INTO placement_applications VALUES (?, ?, ?, ?)",
-        (project_id, plan_id, version, model_version),
-    )
+    record_application(connection, project_id, plan_id, version, model_version)
     return _batch_result(
         "applied", model_version,
         created=(current[item_id].guid for item_id in diff["added"]),

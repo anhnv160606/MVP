@@ -1,14 +1,13 @@
-import os
-import sqlite3
-import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
-from pathlib import Path
 from threading import Barrier
 from unittest.mock import patch
 
+from psycopg import sql
+
+from database.postgres import ProjectDatabaseError, project_transaction
 from database.project_store import PlacementPlanNotFound, PlacementVersionConflict, ProjectStore
+from postgres_fixture import fail_after_insert, setup_postgres, stop_failing_insert
 from tools.ifc_write import draft_save_placements
 
 
@@ -31,9 +30,7 @@ def validation(**overrides):
 
 class DraftSavePlacementsTest(unittest.TestCase):
     def setUp(self):
-        temp = self.enterContext(tempfile.TemporaryDirectory())
-        self.db_path = Path(temp) / "data" / "project #1.db"
-        self.enterContext(patch.dict(os.environ, {"MVP_PROJECT_DB_PATH": str(self.db_path)}))
+        self.temp = setup_postgres(self)
         self.store = ProjectStore()
 
     def test_first_version_persists_failed_validation_and_reasoning(self):
@@ -49,7 +46,7 @@ class DraftSavePlacementsTest(unittest.TestCase):
             "added": ["a", "b"], "updated": [], "removed": [], "unchanged": [],
         })
 
-        reopened = ProjectStore(self.db_path).get_placement_plan("p1", saved["plan_id"], 1)
+        reopened = ProjectStore().get_placement_plan("p1", saved["plan_id"], 1)
         self.assertEqual(reopened["proposals"], devices)
         self.assertEqual(reopened["validation_result"], result)
         self.assertEqual(reopened["diff_summary"], saved["diff_summary"])
@@ -94,21 +91,19 @@ class DraftSavePlacementsTest(unittest.TestCase):
         self.assertEqual(self.store.get_placement_plan("p1", first["plan_id"])["validation_result"], result)
 
     def test_uses_existing_project_database_and_only_changes_draft_tables(self):
-        self.db_path.parent.mkdir()
-        model = self.db_path.parent / "building.ifc"
+        model = self.temp / "building.ifc"
         model.write_bytes(b"example IFC contents")
-        with closing(sqlite3.connect(self.db_path)) as connection, connection:
+        with project_transaction() as connection:
             connection.execute("CREATE TABLE project_state (project_id TEXT)")
             connection.execute("INSERT INTO project_state VALUES ('p1')")
         self.assertIsNone(self.store.get_placement_plan("p1", "missing"))
         draft_save_placements("p1", [proposal("a")], validation())
-        with closing(sqlite3.connect(self.db_path)) as connection:
-            self.assertEqual(connection.execute("SELECT * FROM project_state").fetchall(), [("p1",)])
+        with project_transaction() as connection:
+            self.assertEqual(connection.execute("SELECT * FROM project_state").fetchall(), [{"project_id": "p1"}])
         self.assertEqual(model.read_bytes(), b"example IFC contents")
 
     def test_projects_and_independent_plans_are_isolated(self):
         self.assertIsNone(self.store.get_placement_plan("p1", "missing"))
-        self.assertFalse(self.db_path.exists())
         first = draft_save_placements("p1", [], validation())
         other = draft_save_placements("p1", [], validation())
         self.assertNotEqual(first["plan_id"], other["plan_id"])
@@ -116,7 +111,7 @@ class DraftSavePlacementsTest(unittest.TestCase):
         with self.assertRaises(PlacementPlanNotFound):
             draft_save_placements("p2", [], validation(), plan_id=first["plan_id"], expected_version=1)
 
-    def test_rejects_invalid_inputs_before_creating_database(self):
+    def test_rejects_invalid_inputs_before_opening_a_transaction(self):
         cases = [
             ("", [], validation(), {}),
             ("p1", {}, validation(), {}),
@@ -139,11 +134,12 @@ class DraftSavePlacementsTest(unittest.TestCase):
             ("p1", [], validation(), {"plan_id": "unknown", "expected_version": True}),
             ("p1", [], validation(), {"plan_id": "unknown", "expected_version": 0}),
         ]
-        for index, (project, devices, result, options) in enumerate(cases):
-            with self.subTest(case=index):
-                with self.assertRaises(ValueError):
-                    draft_save_placements(project, devices, result, **options)
-        self.assertFalse(self.db_path.exists())
+        with patch("database.project_store.project_transaction") as transaction:
+            for index, (project, devices, result, options) in enumerate(cases):
+                with self.subTest(case=index):
+                    with self.assertRaises(ValueError):
+                        draft_save_placements(project, devices, result, **options)
+            transaction.assert_not_called()
 
     def test_concurrent_revisions_reject_stale_update(self):
         first = draft_save_placements("p1", [], validation())
@@ -170,20 +166,12 @@ class DraftSavePlacementsTest(unittest.TestCase):
     def test_database_failure_rolls_back_and_allows_retry(self):
         first = draft_save_placements("p1", [proposal("a")], validation())
         plan_id = first["plan_id"]
-        with closing(sqlite3.connect(self.db_path)) as connection, connection:
-            connection.execute("""
-                CREATE TRIGGER fail_revision AFTER INSERT ON placement_plan_versions
-                WHEN NEW.version = 2
-                BEGIN
-                    SELECT RAISE(FAIL, 'simulated write failure');
-                END
-            """)
-        with self.assertRaisesRegex(sqlite3.IntegrityError, "simulated write failure"):
+        fail_after_insert("placement_plan_versions", "simulated write failure", condition=sql.SQL("NEW.version = 2"))
+        with self.assertRaisesRegex(ProjectDatabaseError, "simulated write failure"):
             draft_save_placements("p1", [], validation(), plan_id=plan_id, expected_version=1)
         self.assertEqual(self.store.get_placement_plan("p1", plan_id)["version"], 1)
 
-        with closing(sqlite3.connect(self.db_path)) as connection, connection:
-            connection.execute("DROP TRIGGER fail_revision")
+        stop_failing_insert("placement_plan_versions")
         retried = draft_save_placements("p1", [], validation(), plan_id=plan_id, expected_version=1)
         self.assertEqual(retried["version"], 2)
 

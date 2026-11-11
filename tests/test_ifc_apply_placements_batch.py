@@ -1,12 +1,7 @@
 import hashlib
 import json
-import os
-import sqlite3
-import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
-from pathlib import Path
 from threading import Barrier
 from unittest.mock import patch
 
@@ -25,7 +20,9 @@ from database.placement_application import (
     register_project_ifc,
 )
 from ifc_engine.writer import open_model
+from database.postgres import project_transaction
 from ifc_fixture import make_ifc_fixture
+from postgres_fixture import fail_after_insert, setup_postgres, stop_failing_insert
 from tools.ifc_write import draft_save_placements
 
 
@@ -35,9 +32,7 @@ def digest(path):
 
 class ApplyPlacementsTest(unittest.TestCase):
     def setUp(self):
-        temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.db_path = temp / "project.db"
-        self.enterContext(patch.dict(os.environ, {"MVP_PROJECT_DB_PATH": str(self.db_path)}))
+        temp = setup_postgres(self)
         self.source = temp / "architecture.ifc"
         self.space_id, self.wall_id = make_ifc_fixture(self.source)
         self.source_digest = digest(self.source)
@@ -178,17 +173,12 @@ class ApplyPlacementsTest(unittest.TestCase):
 
     def test_receipt_failure_keeps_baseline_and_can_retry(self):
         draft = self.save([self.device("a")])
-        with closing(sqlite3.connect(self.db_path)) as connection, connection:
-            connection.execute("""
-                CREATE TRIGGER fail_receipt AFTER INSERT ON placement_applications
-                BEGIN SELECT RAISE(FAIL, 'receipt failed'); END
-            """)
+        fail_after_insert("placement_applications", "receipt failed")
         self.assertIn("receipt failed", self.apply(draft)["errors"])
         self.assertEqual(get_project_ifc_path("p1"), self.baseline)
         with self.assertRaises(PlacementApplicationError):
             get_project_ifc_path("p1", 1)
-        with closing(sqlite3.connect(self.db_path)) as connection, connection:
-            connection.execute("DROP TRIGGER fail_receipt")
+        stop_failing_insert("placement_applications")
         self.assertEqual(self.apply(draft)["model_version"], 1)
 
     def test_concurrent_replay_publishes_once(self):
@@ -204,6 +194,25 @@ class ApplyPlacementsTest(unittest.TestCase):
         self.assertCountEqual([item["status"] for item in results], ["applied", "already_applied"])
         self.assertTrue(all(item["model_version"] == 1 for item in results))
         self.assertEqual(len(open_model(get_project_ifc_path("p1")).by_type("IfcOutlet")), 1)
+
+    def test_concurrent_plans_keep_both_batches_in_the_project_model(self):
+        first = self.save([self.device("a")])
+        second = self.save([self.device("b")])
+        start = Barrier(2, timeout=10)
+
+        def run(draft):
+            start.wait()
+            return self.apply(draft)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(run, (first, second)))
+        self.assertEqual([item["status"] for item in results], ["applied", "applied"], results)
+        self.assertCountEqual([item["model_version"] for item in results], [1, 2])
+        output = open_model(get_project_ifc_path("p1"))
+        self.assertCountEqual(
+            [device.GlobalId for device in output.by_type("IfcOutlet")],
+            [item["created_ids"][0] for item in results],
+        )
 
     def test_identical_snapshot_does_not_publish_new_model(self):
         draft = self.save([self.device("a"), self.device("b")])
@@ -242,8 +251,8 @@ class ApplyPlacementsTest(unittest.TestCase):
         ifcopenshell.api.group.assign_group(model, products=[device], group=group)
         model.write(str(path))
         # Simulate an authorized later workflow updating the model metadata.
-        with closing(sqlite3.connect(self.db_path)) as connection, connection:
-            connection.execute("UPDATE project_ifc_versions SET sha256 = ? WHERE version = 1", (digest(path),))
+        with project_transaction() as connection:
+            connection.execute("UPDATE project_ifc_versions SET sha256 = %s WHERE version = 1", (digest(path),))
         result = self.apply(self.save([], first))
         self.assertIn("IfcRelAssignsToGroup", result["errors"][0])
         self.assertEqual(get_project_ifc_path("p1"), path)

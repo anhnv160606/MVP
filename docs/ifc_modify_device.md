@@ -13,7 +13,7 @@ Tool xử lý các thiết bị thuộc phương án do Phase 2 quản lý. Khi 
 
 ## Kiểm tra thủ công trong VS Code với A.ifc
 
-Mở thư mục `D:\AI_CONSTRUCTTION\MVP` trên nhánh `phase-2/placement-tools`. Tạo file tạm `manual_modify_a.py` ở thư mục gốc MVP và dán đoạn Python bên dưới. Chạy hai dòng sau trong Terminal PowerShell. Có thể bỏ qua dòng cài thư viện nếu môi trường đã chạy bài thử IFC trước.
+Mở thư mục `D:\AI_CONSTRUCTTION\MVP` và chuẩn bị `MVP_TEST_DATABASE_URL` trỏ tới database thử đã áp dụng migration theo [hướng dẫn Supabase](placement_supabase.md). Tạo file tạm `manual_modify_a.py` ở thư mục gốc MVP và dán đoạn Python bên dưới. Chạy hai dòng sau trong Terminal PowerShell.
 
 ```powershell
 py -m pip install -r requirements-ifc.txt
@@ -25,6 +25,7 @@ import hashlib
 import os
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from ifcopenshell.util.element import get_container
 from ifcopenshell.util.placement import get_local_placement
@@ -38,8 +39,9 @@ from tools.ifc_write import draft_save_placements, ifc_modify_device
 source = Path(r"D:\AI_CONSTRUCTTION\A.ifc")
 original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
 test_dir = Path(tempfile.mkdtemp(prefix="mvp-modify-a-"))
-os.environ["MVP_PROJECT_DB_PATH"] = str(test_dir / "project.db")
-project = "manual-modify"
+os.environ["MVP_DATABASE_URL"] = os.environ["MVP_TEST_DATABASE_URL"]
+os.environ["MVP_IFC_SNAPSHOT_DIR"] = str(test_dir / "snapshots")
+project = f"manual-modify-{uuid4().hex}"
 space = "2cpX_k3PjBxxi1pGo0wUjc"  # Phòng khách tầng 1
 
 def demo_validator(*, proposals, placement_context, rules):

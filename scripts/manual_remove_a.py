@@ -5,6 +5,7 @@ import hashlib
 import os
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from agent.orchestrator import apply_approved_placement_plan
 from database.placement_application import approve_placement_plan, get_project_ifc_path, register_project_ifc
@@ -23,8 +24,9 @@ def demo_validator(*, proposals, placement_context, rules):
 def main(source):
     original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
     test_dir = Path(tempfile.mkdtemp(prefix="mvp-remove-a-"))
-    os.environ["MVP_PROJECT_DB_PATH"] = str(test_dir / "project.db")
-    project = "manual-remove"
+    os.environ["MVP_DATABASE_URL"] = os.environ["MVP_TEST_DATABASE_URL"]
+    os.environ["MVP_IFC_SNAPSHOT_DIR"] = str(test_dir / "snapshots")
+    project = f"manual-remove-{uuid4().hex}"
     space = "2cpX_k3PjBxxi1pGo0wUjc"
     context = {"space_id": space}
     rules = {"minimum_lights": 1}

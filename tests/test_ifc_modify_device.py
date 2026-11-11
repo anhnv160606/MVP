@@ -1,8 +1,5 @@
-import os
-import tempfile
 import unittest
-from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
@@ -13,6 +10,7 @@ from database.placement_application import approve_placement_plan, get_project_i
 from database.project_store import ProjectStore
 from ifc_engine.writer import open_model
 from ifc_fixture import make_ifc_fixture
+from postgres_fixture import setup_postgres
 from tools.ifc_write import draft_save_placements, ifc_modify_device
 
 
@@ -22,8 +20,7 @@ def check(**overrides):
 
 class ModifyDeviceTest(unittest.TestCase):
     def setUp(self):
-        self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.enterContext(patch.dict(os.environ, {"MVP_PROJECT_DB_PATH": str(self.temp / "state.db")}))
+        self.temp = setup_postgres(self)
         self.store = ProjectStore()
         self.a = {
             "proposed_id": "A", "device_type": "socket", "space_id": "room-1",

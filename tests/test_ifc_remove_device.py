@@ -1,19 +1,16 @@
 import hashlib
-import os
-import sqlite3
-import tempfile
 import unittest
-from contextlib import closing
-from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import ifcopenshell.api.group
 
 from agent.orchestrator import apply_approved_placement_plan
 from database.placement_application import approve_placement_plan, get_project_ifc_path, register_project_ifc
+from database.postgres import project_transaction
 from database.project_store import ProjectStore
 from ifc_engine.writer import open_model
 from ifc_fixture import make_ifc_fixture
+from postgres_fixture import fail_after_insert, setup_postgres
 from tools.ifc_write import draft_save_placements, ifc_remove_device
 
 
@@ -23,9 +20,7 @@ def validation(**overrides):
 
 class RemoveDeviceTest(unittest.TestCase):
     def setUp(self):
-        self.temp = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.db = self.temp / "state.db"
-        self.enterContext(patch.dict(os.environ, {"MVP_PROJECT_DB_PATH": str(self.db)}))
+        self.temp = setup_postgres(self)
         self.store = ProjectStore()
         self.a = {"proposed_id": "A", "device_type": "socket", "space_id": "room", "position": [1, 1, 1]}
         self.b = {**self.a, "proposed_id": "B", "position": [2, 1, 1]}
@@ -59,9 +54,9 @@ class RemoveDeviceTest(unittest.TestCase):
         group = ifcopenshell.api.group.add_group(model, name="Circuit group")
         ifcopenshell.api.group.assign_group(model, products=[model.by_guid(device_id)], group=group)
         model.write(str(path))
-        with closing(sqlite3.connect(self.db)) as connection, connection:
+        with project_transaction() as connection:
             connection.execute(
-                "UPDATE project_ifc_versions SET sha256 = ? WHERE project_id = 'p' AND version = 1",
+                "UPDATE project_ifc_versions SET sha256 = %s WHERE project_id = 'p' AND version = 1",
                 (hashlib.sha256(path.read_bytes()).hexdigest(),),
             )
         return model.by_type("IfcRelAssignsToGroup")[0].GlobalId
@@ -126,11 +121,7 @@ class RemoveDeviceTest(unittest.TestCase):
     def test_audit_failure_rolls_back_new_draft(self):
         seed = draft_save_placements("p", [self.a], validation())["plan_id"]
         self.assertEqual(self.remove(plan_id=seed)["status"], "pending_review")
-        with closing(sqlite3.connect(self.db)) as connection, connection:
-            connection.execute("""
-                CREATE TRIGGER fail_audit AFTER INSERT ON placement_removals
-                BEGIN SELECT RAISE(FAIL, 'audit write failed'); END
-            """)
+        fail_after_insert("placement_removals", "audit write failed")
         result = self.remove()
         self.assertEqual(result["status"], "failed")
         self.assertIn("audit write failed", result["errors"][0])
