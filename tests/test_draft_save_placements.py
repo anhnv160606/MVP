@@ -9,7 +9,7 @@ from threading import Barrier
 from unittest.mock import patch
 
 from database.project_store import PlacementPlanNotFound, PlacementVersionConflict, ProjectStore
-from tools.draft_save_placements import draft_save_placements
+from tools.ifc_write import draft_save_placements
 
 
 def proposal(proposed_id, position=None):

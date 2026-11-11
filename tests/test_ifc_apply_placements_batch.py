@@ -26,7 +26,7 @@ from database.placement_application import (
 )
 from ifc_engine.writer import open_model
 from ifc_fixture import make_ifc_fixture
-from tools.draft_save_placements import draft_save_placements
+from tools.ifc_write import draft_save_placements
 
 
 def digest(path):

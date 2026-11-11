@@ -22,7 +22,7 @@ Lần chạy thành công trả `applied`. Gọi lại cùng phiên bản đã �
 
 ## Kiểm tra thủ công trong VS Code
 
-Mở thư mục MVP trên nhánh `phase-2/ifc-apply-placements-batch`. Trong Terminal PowerShell, dùng `py` như khi kiểm tra tool lưu nháp. Nên dùng Python 3.12 vì đây là phiên bản đã chạy bộ kiểm thử.
+Mở thư mục MVP trên nhánh `phase-2/placement-tools`. Trong Terminal PowerShell, dùng `py` như khi kiểm tra tool lưu nháp. Nên dùng Python 3.12 vì đây là phiên bản đã chạy bộ kiểm thử.
 
 ```powershell
 cd D:\AI_CONSTRUCTTION\MVP
@@ -44,7 +44,7 @@ import os
 import ifcopenshell
 from agent.orchestrator import apply_approved_placement_plan
 from database.placement_application import approve_placement_plan, get_project_ifc_path, register_project_ifc
-from tools.draft_save_placements import draft_save_placements
+from tools.ifc_write import draft_save_placements
 
 project = "manual-ifc"
 source = os.environ["MVP_TEST_IFC"]

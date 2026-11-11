@@ -13,8 +13,7 @@ from database.placement_application import approve_placement_plan, get_project_i
 from database.project_store import ProjectStore
 from ifc_engine.writer import open_model
 from ifc_fixture import make_ifc_fixture
-from tools.draft_save_placements import draft_save_placements
-from tools.ifc_modify_device import ifc_modify_device
+from tools.ifc_write import draft_save_placements, ifc_modify_device
 
 
 def check(**overrides):

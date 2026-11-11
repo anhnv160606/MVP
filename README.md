@@ -1,12 +1,25 @@
 # MVP
 
+## Phase 2 — Bốn hàm của nhóm C
+
+Import các tool từ `tools.ifc_write`.
+
+| Hàm | Input nghiệp vụ | Output chính |
+| --- | --- | --- |
+| `draft_save_placements` | `project_id`, `proposals`, `validation_result` | Mã phương án, phiên bản, trạng thái và thay đổi so với bản trước |
+| `ifc_apply_placements_batch` | `approved_plan_id`, `version`, `project_id` | Trạng thái, GlobalId thêm/sửa/xóa, lỗi và phiên bản IFC |
+| `ifc_modify_device` | `device_id`, `changes` | Thiết bị đã sửa, kết quả kiểm tra và phiên bản chờ duyệt |
+| `ifc_remove_device` | `device_id`, `reason` | Mã thiết bị bỏ khỏi nháp, tham chiếu bị ảnh hưởng và phiên bản chờ duyệt |
+
+Backend cung cấp phạm vi dự án, phiên bản gốc và validator khi sửa hoặc xóa. Orchestrator chỉ áp dụng vào IFC sau khi có phê duyệt cho đúng phiên bản.
+
 ## Phase 2 — Lưu nháp phương án bố trí thiết bị
 
 Chạy từ thư mục gốc của MVP bằng Python 3.11 trở lên.
 
 ```python
 from database.project_store import ProjectStore
-from tools.draft_save_placements import draft_save_placements
+from tools.ifc_write import draft_save_placements
 
 proposals = [{
     "proposed_id": "socket-01",

@@ -10,8 +10,7 @@ from agent.orchestrator import apply_approved_placement_plan
 from database.placement_application import approve_placement_plan, get_project_ifc_path, register_project_ifc
 from database.project_store import ProjectStore
 from ifc_engine.writer import open_model
-from tools.draft_save_placements import draft_save_placements
-from tools.ifc_remove_device import ifc_remove_device
+from tools.ifc_write import draft_save_placements, ifc_remove_device
 
 
 def demo_validator(*, proposals, placement_context, rules):

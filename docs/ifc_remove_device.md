@@ -12,7 +12,7 @@
 
 ## Thử thủ công trong VS Code
 
-Trong Terminal PowerShell, mở MVP trên nhánh `phase-2/ifc-remove-device` và chạy:
+Trong Terminal PowerShell, mở MVP trên nhánh `phase-2/placement-tools` và chạy:
 
 ```powershell
 cd D:\AI_CONSTRUCTTION\MVP

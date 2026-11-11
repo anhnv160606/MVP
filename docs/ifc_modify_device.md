@@ -13,7 +13,7 @@ Tool xử lý các thiết bị thuộc phương án do Phase 2 quản lý. Khi 
 
 ## Kiểm tra thủ công trong VS Code với A.ifc
 
-Mở thư mục `D:\AI_CONSTRUCTTION\MVP` trên nhánh `phase-2/ifc-modify-device`. Tạo file tạm `manual_modify_a.py` ở thư mục gốc MVP và dán đoạn Python bên dưới. Chạy hai dòng sau trong Terminal PowerShell. Có thể bỏ qua dòng cài thư viện nếu môi trường đã chạy bài thử IFC trước.
+Mở thư mục `D:\AI_CONSTRUCTTION\MVP` trên nhánh `phase-2/placement-tools`. Tạo file tạm `manual_modify_a.py` ở thư mục gốc MVP và dán đoạn Python bên dưới. Chạy hai dòng sau trong Terminal PowerShell. Có thể bỏ qua dòng cài thư viện nếu môi trường đã chạy bài thử IFC trước.
 
 ```powershell
 py -m pip install -r requirements-ifc.txt
@@ -33,8 +33,7 @@ from agent.orchestrator import apply_approved_placement_plan
 from database.placement_application import approve_placement_plan, get_project_ifc_path, register_project_ifc
 from database.project_store import ProjectStore
 from ifc_engine.writer import open_model
-from tools.draft_save_placements import draft_save_placements
-from tools.ifc_modify_device import ifc_modify_device
+from tools.ifc_write import draft_save_placements, ifc_modify_device
 
 source = Path(r"D:\AI_CONSTRUCTTION\A.ifc")
 original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
