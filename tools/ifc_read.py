@@ -105,20 +105,23 @@ def _space_members(model: Any, space: Any) -> tuple[list[Any], str]:
             for item in (_get(rel, "RelatedElements", []) or []):
                 found[_entity_id(item) or str(id(item))] = item
     # IFC space boundaries provide walls and openings that may not be contained in the space.
+    has_space_boundary = False
     try:
         boundaries = model.by_type("IfcRelSpaceBoundary")
     except Exception:
         boundaries = []
     for rel in boundaries:
         if _entity_id(_get(rel, "RelatingSpace")) == sid:
+            has_space_boundary = True
             element = _get(rel, "RelatedBuildingElement")
             if element is not None:
                 found[_entity_id(element) or str(id(element))] = element
-    if found:
+    if has_space_boundary:
         return list(found.values()), "ifc_relationship"
-    # Many Revit exports omit IfcRelSpaceBoundary. In that case use the space's
-    # containing storey to discover candidates; the caller must filter by the
-    # actual room geometry and report that the association is inferred.
+    # A space may contain some objects directly (often furniture/obstacles)
+    # while still omitting its walls and openings. Keep those direct members,
+    # then supplement them with candidates from the containing storey.
+    has_direct_members = bool(found)
     storey = _get(space, "storey")
     if storey is None:
         for relation in (_get(space, "Decomposes", []) or []):
@@ -128,11 +131,15 @@ def _space_members(model: Any, space: Any) -> tuple[list[Any], str]:
                 break
     storey_id = _entity_id(storey)
     if storey_id:
+        has_storey_candidates = False
         for rel in relationships:
             if _entity_id(_get(rel, "RelatingStructure")) == storey_id:
                 for item in (_get(rel, "RelatedElements", []) or []):
                     found[_entity_id(item) or str(id(item))] = item
-    return list(found.values()), "storey_geometry_candidates" if found else "unavailable"
+                    has_storey_candidates = True
+        if has_storey_candidates:
+            return list(found.values()), "storey_geometry_candidates"
+    return list(found.values()), "ifc_relationship" if has_direct_members else "unavailable"
 
 
 def _bbox_intersects(left: dict[str, Any] | None, right: dict[str, Any] | None, clearance_m: float = 0.0) -> bool | None:
@@ -194,25 +201,6 @@ def _unit_scale(model: Any) -> float | None:
         return None
 
 
-def _scale_point(value: Any, scale: float) -> Any:
-    if isinstance(value, dict) and all(k in value for k in ("x", "y")):
-        return {**value, "x": float(value["x"])*scale, "y": float(value["y"])*scale,
-                **({"z": float(value["z"])*scale} if value.get("z") is not None else {})}
-    if isinstance(value, (list, tuple)) and len(value) >= 2 and all(isinstance(x, (int, float)) for x in value[:3]):
-        return [float(x)*scale for x in value]
-    return value
-
-
-def _scale_geometry(value: Any, scale: float, key: str = "") -> Any:
-    if key in {"position", "start", "end", "min", "max", "centroid", "origin", "point"}:
-        return _scale_point(value, scale)
-    if isinstance(value, dict):
-        return {k: _scale_geometry(v, scale, k) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_scale_geometry(v, scale, "point" if key == "polygon_2d" else "") for v in value]
-    return value
-
-
 def _area_m2(space: Any, model: Any, scale: float) -> float | None:
     value = _get(space, "area_m2")
     if value is not None:
@@ -247,17 +235,14 @@ def _shape_bbox(model: Any, entity: Any, scale: float) -> dict[str, Any] | None:
         return None
 
 
-def ifc_get_placement_context(space_id: str, model: Any = None, context: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Collect a space and its available hosts/openings/obstacles.
+def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, Any]:
+    """Internal IFC reader; the public Agent tool only receives ``space_id``.
 
-    ``context`` is useful when the IFC reader has already computed geometry.
-    ``model`` may be an IfcOpenShell model; callers retain responsibility for
-    loading and lifecycle of the IFC file.
+    The API/Phase 2 dispatcher owns loading and lifecycle of ``model`` and
+    injects it here. Geometry and quantities are read from this IFC model.
     """
     space = None
-    if context and str(context.get("space_id", space_id)) == str(space_id):
-        space = context
-    elif model is not None and hasattr(model, "by_id"):
+    if model is not None and hasattr(model, "by_id"):
         # by_id accepts STEP ids, while GlobalId lookup is common in tool calls.
         if str(space_id).isdigit():
             try:
@@ -270,26 +255,18 @@ def ifc_get_placement_context(space_id: str, model: Any = None, context: dict[st
             except Exception:
                 space = None
     if space is None:
-        return {"space_id": space_id, "space_type": None, "geometry": None, "walls": [], "ceiling": None,
-                "doors": [], "windows": [], "obstacles": [], "coordinate_system": None,
-                "missing_data": ["space_not_found", "space_geometry", "walls", "doors", "windows", "obstacles", "coordinate_system"],
-                "warnings": ["Không tìm thấy không gian trong IFC/context; chưa thể lập phương án."]}
+        return {"space_type": None, "geometry": None, "walls": [], "ceiling": None,
+                "doors": [], "windows": [], "obstacles": [],
+                "coordinate_system": {"kind": "IFC project coordinates", "unit": "unknown"},
+                "missing_data": ["space_not_found", "space_geometry", "walls", "ceiling", "doors", "windows",
+                                 "obstacles", "coordinate_system", "unit_conversion", "area_m2", "space_type"],
+                "warnings": ["Không tìm thấy không gian trong IFC; chưa thể lập phương án."]}
 
     name = _decode_ifc_text(_get(space, "LongName") or _get(space, "Name") or _get(space, "name"))
     space_type, space_type_source = _room_type(space)
-    if model is not None:
-        scale_value = _unit_scale(model)
-        unit_known = scale_value is not None
-        scale = scale_value if unit_known else 1.0
-    else:
-        declared_scale = _get(space, "unit_scale_to_m")
-        coordinate_system = _get(space, "coordinate_system")
-        unit = str(coordinate_system.get("unit", "")).casefold() if isinstance(coordinate_system, dict) else ""
-        unit_factors = {"m": 1.0, "metre": 1.0, "meter": 1.0, "metres": 1.0, "meters": 1.0,
-                        "mm": 0.001, "millimetre": 0.001, "millimeter": 0.001, "cm": 0.01, "centimetre": 0.01, "centimeter": 0.01,
-                        "ft": 0.3048, "foot": 0.3048, "feet": 0.3048, "in": 0.0254, "inch": 0.0254}
-        unit_known = declared_scale is not None or unit in unit_factors
-        scale = float(declared_scale if declared_scale is not None else unit_factors.get(unit, 1.0))
+    scale_value = _unit_scale(model)
+    unit_known = scale_value is not None
+    scale = scale_value if unit_known else 1.0
     geometry = _get(space, "geometry")
     if geometry is None and model is not None:
         geometry = _shape_bbox(model, space, scale)
@@ -313,9 +290,6 @@ def ifc_get_placement_context(space_id: str, model: Any = None, context: dict[st
         storey_elevation = float(source_elevation)*scale if source_elevation is not None else None
     result["storey_name"] = _decode_ifc_text(_get(storey, "Name")) if storey is not None else _get(space, "storey_name")
     result["storey_elevation_m"] = storey_elevation
-    if model is None and scale != 1.0:
-        for key in ("geometry", "walls", "ceiling", "doors", "windows", "obstacles"):
-            result[key] = _scale_geometry(result[key], scale, key)
     members, membership_method = _space_members(model, space)
     result["membership_method"] = membership_method
     if membership_method == "storey_geometry_candidates":
@@ -325,6 +299,10 @@ def ifc_get_placement_context(space_id: str, model: Any = None, context: dict[st
     if members:
         for item in members:
             kind = (_entity_type(item) or "").lower()
+            if membership_method == "storey_geometry_candidates" and not any(
+                token in kind for token in ("wall", "slab", "door", "window", "covering", "column", "furnishing", "furniture", "buildingelementproxy")
+            ):
+                continue
             item_geometry = _shape_bbox(model, item, scale)
             if membership_method == "storey_geometry_candidates":
                 overlap = _bbox_intersects(result.get("geometry"), item_geometry)
@@ -387,8 +365,12 @@ def ifc_get_placement_context(space_id: str, model: Any = None, context: dict[st
     if isinstance(bbox, dict) and bbox.get("min") and bbox.get("max"):
         low, high = _point3(bbox["min"]), _point3(bbox["max"])
         if low and high:
-            result["area_bbox_estimate_m2"] = round(max(0.0, high[0]-low[0]) * max(0.0, high[1]-low[1]), 3)
-            result["area_bbox_estimate_note"] = "Ước lượng theo footprint hộp bao; không thay cho diện tích QTO hoặc biên phòng thực."
+            width, depth = high[0]-low[0], high[1]-low[1]
+            if width > 0 and depth > 0:
+                result["area_bbox_estimate_m2"] = round(width * depth, 3)
+                result["area_bbox_estimate_note"] = "Ước lượng theo footprint hộp bao; không thay cho diện tích QTO hoặc biên phòng thực."
+            else:
+                missing.append("room_bbox_dimensions")
     result["area_source"] = "IFC/context area value" if result.get("area_m2") is not None else None
     result["geometry_quality"] = (
         "ifc_geometry_bbox" if isinstance(result.get("geometry"), dict) and result["geometry"].get("bbox")
@@ -403,7 +385,36 @@ def ifc_get_placement_context(space_id: str, model: Any = None, context: dict[st
         result["coordinate_system"] = {**source_cs, "unit": "metre", "scale_applied": scale}
     else:
         result["coordinate_system"] = result["coordinate_system"] or {"kind": "IFC project coordinates", "unit": "unknown", "scale_applied": result["unit_scale_to_m"]}
-    return result
+    geometry_output = dict(result["geometry"]) if isinstance(result.get("geometry"), dict) else {}
+    geometry_output.update({
+        "room_name": result.get("name"),
+        "area_m2": result.get("area_m2"),
+        "area_bbox_estimate_m2": result.get("area_bbox_estimate_m2"),
+        "area_bbox_estimate_note": result.get("area_bbox_estimate_note"),
+        "geometry_quality": result.get("geometry_quality"),
+        "storey_name": result.get("storey_name"),
+        "storey_elevation_m": result.get("storey_elevation_m"),
+        "membership_method": result.get("membership_method"),
+    })
+    coordinate_system_source = result.get("coordinate_system")
+    coordinate_system = (dict(coordinate_system_source) if isinstance(coordinate_system_source, dict)
+                         else {"kind": str(coordinate_system_source or "IFC project coordinates"),
+                               "unit": "metre" if unit_known else "unknown",
+                               "scale_applied": scale})
+    coordinate_system["frame"] = result["coordinate_frame"]
+    coordinate_system["elevation_m"] = result.get("storey_elevation_m")
+    return {
+        "space_type": result.get("space_type"),
+        "geometry": geometry_output,
+        "walls": result.get("walls", []),
+        "ceiling": result.get("ceiling"),
+        "doors": result.get("doors", []),
+        "windows": result.get("windows", []),
+        "obstacles": result.get("obstacles", []),
+        "coordinate_system": coordinate_system,
+        "missing_data": result["missing_data"],
+        "warnings": result["warnings"],
+    }
 
 
 def ifc_list_placed_devices(space_id: str | None = None, storey_id: str | None = None,

@@ -40,7 +40,7 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
                  for name, description, properties, required in specs]
 
     def context_for(space_id: str) -> dict[str, Any]:
-        return ifc_read.ifc_get_placement_context(space_id, model=model())
+        return ifc_read.read_placement_context_from_ifc(space_id, model=model())
 
     def existing_devices() -> list[dict[str, Any]]:
         adapter = model_adapter_provider() if model_adapter_provider else None
