@@ -107,6 +107,23 @@ def get_model_row(connection, project_id, version=None):
     ).fetchone()
 
 
+def get_applied_placement_plan(project_id, plan_id):
+    """Read the applied proposals and current model path from the same DB snapshot."""
+    with application_transaction() as (connection, snapshot_dir):
+        applied_version = connection.execute(
+            """SELECT MAX(plan_version) FROM placement_applications
+               WHERE project_id = ? AND plan_id = ?""",
+            (project_id, plan_id),
+        ).fetchone()[0]
+        if applied_version is None:
+            raise PlacementApplicationError("This plan has not been applied to IFC")
+        proposals, _ = load_plan(connection, project_id, plan_id, applied_version)
+        row = get_model_row(connection, project_id)
+        if row is None:
+            raise PlacementApplicationError("The project's IFC model was not found")
+    return proposals, verified_model_path(snapshot_dir, row)
+
+
 def _sha256(path):
     with path.open("rb") as file:
         return hashlib.file_digest(file, "sha256").hexdigest()

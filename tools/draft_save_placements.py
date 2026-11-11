@@ -25,7 +25,7 @@ def _validate_position(position, field):
             raise ValueError(f"{field} must contain finite numeric coordinates")
 
 
-def _validate_proposals(proposals):
+def validate_proposals(proposals):
     if not isinstance(proposals, list):
         raise ValueError("proposals must be a list")
     seen = set()
@@ -50,7 +50,7 @@ def _validate_proposals(proposals):
                 _require_identifier(rule_id, f"{field}.rule_ids item")
 
 
-def _validate_result(result):
+def validate_placement_result(result):
     if not isinstance(result, dict) or type(result.get("valid")) is not bool:
         raise ValueError("validation_result must be an object with a boolean valid field")
     for field in ("errors", "warnings", "suggested_fixes"):
@@ -82,8 +82,8 @@ def draft_save_placements(
         _require_identifier(plan_id, "plan_id")
         if type(expected_version) is not int or expected_version < 1:
             raise ValueError("Revising a plan requires a positive integer expected_version")
-    _validate_proposals(proposals)
-    _validate_result(validation_result)
+    validate_proposals(proposals)
+    validate_placement_result(validation_result)
 
     return ProjectStore().save_placement_plan(
         project_id, proposals, validation_result,

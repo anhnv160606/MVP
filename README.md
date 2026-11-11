@@ -33,3 +33,5 @@ python -m unittest discover -s tests -v
 ```
 
 Các bài kiểm thử IFC trong bộ test cần cài thêm dependency theo [hướng dẫn áp dụng phương án vào IFC](docs/ifc_apply_placements_batch.md). Để chỉ chạy bộ kiểm thử lưu nháp, thêm `-p test_draft_save_placements.py` vào lệnh trên.
+
+Xem [nguyên lý và bài kiểm thử chỉnh sửa thiết bị trên A.ifc](docs/ifc_modify_device.md) để thử `ifc_modify_device`.
