@@ -126,7 +126,7 @@ def playbook_get_object_rules(client: Any, device_type: str, space_type: str, pr
     terminals = _rows(client, TABLES["terminals"])
     loads = _rows(client, TABLES["loads"])
     d, s = _norm(device_type), _norm(space_type)
-    objects = [r for r in object_rules if (not d or any(_contains(x, d) for x in r.get("tu_khoa_nhan_dien", [])))
+    objects = [r for r in object_rules if (not d or any(_contains(x, d) or _contains(d, x) for x in r.get("tu_khoa_nhan_dien", [])))
                and (not s or not r.get("khong_gian_thuong_gap") or _contains(r.get("khong_gian_thuong_gap"), s))]
     rooms = [r for r in room_rules if not s or _contains(r.get("loai_khong_gian"), s)]
     applicable_design = [r for r in design_rules if not d or _contains(r.get("ten_quy_tac"), d) or _contains(r.get("phan_loai"), d)]

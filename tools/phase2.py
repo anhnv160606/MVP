@@ -22,10 +22,10 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
     specs = [
         ("ifc_get_placement_context", "Đọc geometry và vật cản có trong IFC; trả thiếu_data nếu không xác định được.", {"space_id": {"type": "string"}}, ["space_id"]),
         ("questionnaire_get_load_context", "Lấy yêu cầu tải người dùng đã khai báo.", {"space_id": {"type": "string"}}, []),
-        ("playbook_get_object_rules", "Tra rule theo thiết bị/phòng; trả rule_id và nguồn khi dữ liệu có.", {"device_type": {"type": "string"}, "space_type": {"type": "string"}, "project_standard": {"type": "string"}}, ["device_type", "space_type"]),
-        ("playbook_query_devices", "Tra catalog thiết bị; không tạo đối tượng IFC.", {"category": {"type": "string"}, "filters": {"type": "object"}}, ["category"]),
+        ("playbook_get_object_rules", "Tra rule theo thiết bị/phòng; trả rule_id và nguồn khi dữ liệu có.", {"device_type": {"type": "string"}, "space_type": {"type": "string"}, "project_standard": {"type": "string"}}, ["device_type", "space_type", "project_standard"]),
+        ("playbook_query_devices", "Tra catalog thiết bị; không tạo đối tượng IFC.", {"category": {"type": "string"}, "filters": {"type": "object"}}, ["category", "filters"]),
         ("playbook_get_load_class", "Phân loại tải, tách riêng phân loại với hệ số nhu cầu.", {"space_type": {"type": "string"}, "device_category": {"type": "string"}}, ["space_type", "device_category"]),
-        ("playbook_get_terminal_class", "Tra lớp đầu cuối để lưu với điểm tải.", {"device_type": {"type": "string"}, "connection_requirements": {"type": "object"}}, ["device_type"]),
+        ("playbook_get_terminal_class", "Tra lớp đầu cuối để lưu với điểm tải.", {"device_type": {"type": "string"}, "connection_requirements": {"type": "object"}}, ["device_type", "connection_requirements"]),
         ("ifc_list_placed_devices", "Liệt kê thiết bị đã có trong phương án/model.", {"space_id": {"type": "string"}, "storey_id": {"type": "string"}}, []),
         ("engine_plan_placements", "Tạo đề xuất có thể giải thích từ context, rule, catalog và nhu cầu; không tự chọn số lượng thiếu.", {"space_ids": {"type": "array", "items": {"type": "string"}}, "device_specs": {"type": "array", "items": {"type": "object"}}, "quantity_overrides": {"type": "object"}}, ["space_ids", "device_specs"]),
         ("engine_validate_placements", "Kiểm tra tọa độ và xung đột với hình học IFC/rule đã cung cấp.", {"proposals": {"type": "array", "items": {"type": "object"}}}, ["proposals"]),
@@ -47,13 +47,20 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
         registered = adapter.list_devices() if callable(getattr(adapter, "list_devices", None)) else []
         return ifc_read.ifc_list_placed_devices(placements=registered, model=model())["devices"]
 
-    def rules_for(proposals: list[dict[str, Any]], contexts: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-        result_rows = []
-        seen = set()
+    def rules_for(
+        proposals: list[dict[str, Any]],
+        contexts: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        result_rows: list[dict[str, Any]] = []
+        seen: set[str | None] = set()
         for proposal in proposals:
             sid = str(proposal.get("space_id", ""))
             ctx = contexts.get(sid, {})
-            result = playbook.playbook_get_object_rules(supabase_client, str(proposal.get("device_type", "")), str(ctx.get("space_type") or ""))
+            result = playbook.playbook_get_object_rules(
+                supabase_client,
+                str(proposal.get("device_type", "")),
+                str(ctx.get("space_type") or ""),
+            )
             wanted = set(proposal.get("rule_ids") or [])
             for rule in result["rules"]:
                 if wanted and rule.get("rule_id") not in wanted:

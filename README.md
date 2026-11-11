@@ -38,6 +38,21 @@ phase2 = build_phase2_toolset(
 
 `ToolCallingAgent` nhận callback `complete(messages=..., tools=...)` từ provider và `phase2` làm toolset. System prompt, provider credentials, lịch sử lưu trữ và streaming vẫn do tầng API/app cấp.
 
+## Chạy smoke test Tool 1–6
+
+Chạy từng file từ thư mục `MVP`. Tool 1 đọc `A.ifc` ở thư mục cha (cần cài `ifcopenshell`); Tool 2–6 dùng dữ liệu mẫu đại diện lấy từ Playbook nên không cần kết nối Supabase.
+
+```powershell
+python tests\test_ifc_get_placement_context.py
+python tests\test_questionnaire_get_load_context.py
+python tests\test_playbook_get_object_rules.py
+python tests\test_playbook_query_devices.py
+python tests\test_playbook_get_load_class.py
+python tests\test_playbook_get_terminal_class.py
+```
+
+Mỗi file in JSON theo output của tool để dễ đối chiếu. Có thể đổi IFC của Tool 1 bằng biến môi trường `A_IFC_PATH`.
+
 IFC adapter phải cung cấp thao tác transaction an toàn `apply_batch(records, idempotency_key, removed_ids)`. Có thể bổ sung `list_devices()`, `modify_device(id, changes)` và `remove_device(id, reason)` để nối đầy đủ các thao tác. `IfcOpenShellPlacementAdapter` đã có khung ghi theo transaction; ứng dụng cần cấp `geometry_factory` từ catalog và `output_path`. Adapter chịu trách nhiệm rollback khi IFC write lỗi; tool chỉ đánh dấu phương án `applied` sau khi adapter xác nhận `status="success"`. Kỹ sư/API review gọi `ProjectStore.approve_plan(project_id, plan_id, version)` sau xác thực người duyệt; không expose thao tác duyệt cho LLM.
 
 ## Ranh giới dữ liệu

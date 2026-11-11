@@ -155,6 +155,18 @@ def _bbox_intersects(left: dict[str, Any] | None, right: dict[str, Any] | None, 
     return all(amin[i]-clearance_m <= bmax[i] and amax[i]+clearance_m >= bmin[i] for i in range(3))
 
 
+def _placement_near_bbox(bbox: dict[str, Any] | None, point: dict[str, Any] | None,
+                         margin_m: float = 3.0) -> bool | None:
+    """Cheap candidate filter before asking IfcOpenShell to tessellate an element."""
+    if not isinstance(bbox, dict) or not isinstance(point, dict):
+        return None
+    bounds = bbox.get("bbox", bbox)
+    low, high, location = _point3(bounds.get("min")), _point3(bounds.get("max")), _point3(point)
+    if not low or not high or not location:
+        return None
+    return all(low[i] - margin_m <= location[i] <= high[i] + margin_m for i in range(3))
+
+
 def _point3(value: Any) -> tuple[float, float, float] | None:
     if isinstance(value, dict):
         try:
@@ -240,6 +252,51 @@ def _shape_bbox(model: Any, entity: Any) -> dict[str, Any] | None:
         return None
 
 
+def _shape_bboxes(model: Any, entities: list[Any]) -> dict[str, dict[str, Any]]:
+    """Get bboxes for multiple products in one cached, multithreaded IFC pass."""
+    if not entities:
+        return {}
+    try:
+        import os
+        import ifcopenshell.geom
+
+        settings = ifcopenshell.geom.settings()
+        settings.set("use-world-coords", True)
+        settings.set("convert-back-units", False)
+        iterator = ifcopenshell.geom.iterator(
+            settings, model, max(1, min(4, os.cpu_count() or 1)), include=entities
+        )
+        output: dict[str, dict[str, Any]] = {}
+        if iterator.initialize():
+            while True:
+                shape = iterator.get()
+                vertices = list(shape.geometry.verts)
+                points = [
+                    (vertices[i], vertices[i + 1], vertices[i + 2])
+                    for i in range(0, len(vertices) - 2, 3)
+                ]
+                if points:
+                    low = [min(point[i] for point in points) for i in range(3)]
+                    high = [max(point[i] for point in points) for i in range(3)]
+                    try:
+                        entity = model.by_id(int(shape.id))
+                        entity_id = _entity_id(entity)
+                    except (TypeError, ValueError, RuntimeError):
+                        entity_id = None
+                    if entity_id:
+                        output[entity_id] = {
+                            "bbox": {"min": low, "max": high},
+                            "centroid": [(low[i] + high[i]) / 2 for i in range(3)],
+                        }
+                if not iterator.next():
+                    break
+        return output
+    except Exception:
+        # Keep compatibility with older IfcOpenShell builds; callers still
+        # receive positions and missing-geometry warnings if batch geometry fails.
+        return {}
+
+
 def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, Any]:
     """Internal IFC reader; the public Agent tool only receives ``space_id``.
 
@@ -301,14 +358,35 @@ def read_placement_context_from_ifc(space_id: str, *, model: Any) -> dict[str, A
         result["warnings"].append("IFC không có IfcRelSpaceBoundary; đối tượng cùng tầng được gắn phòng theo giao nhau bounding box, cần kỹ sư rà soát.")
         if not result.get("geometry"):
             result["warnings"].append("Thiếu geometry phòng nên không thể lọc chính xác đối tượng cùng tầng.")
-    if members:
-        for item in members:
-            kind = (_entity_type(item) or "").lower()
-            if membership_method == "storey_geometry_candidates" and not any(
-                token in kind for token in ("wall", "slab", "door", "window", "covering", "column", "furnishing", "furniture", "buildingelementproxy")
-            ):
+    relevant_members = []
+    for item in members:
+        kind = (_entity_type(item) or "").lower()
+        if membership_method == "storey_geometry_candidates" and not any(
+            token in kind for token in ("wall", "slab", "door", "window", "covering", "column", "furnishing", "furniture", "buildingelementproxy")
+        ):
+            continue
+        # The IFC fallback may return every element on a storey. Filter by
+        # cheap placement coordinates first so we do not mesh unrelated rooms.
+        if membership_method == "storey_geometry_candidates":
+            near_room = _placement_near_bbox(
+                result.get("geometry"), _location(item, scale, model)
+            )
+            if near_room is False:
                 continue
-            item_geometry = _shape_bbox(model, item)
+        relevant_members.append(item)
+
+    member_geometries = _shape_bboxes(model, relevant_members)
+    if not member_geometries:
+        member_geometries = {
+            _entity_id(item): geometry
+            for item in relevant_members
+            if (geometry := _shape_bbox(model, item)) is not None and _entity_id(item)
+        }
+
+    if relevant_members:
+        for item in relevant_members:
+            kind = (_entity_type(item) or "").lower()
+            item_geometry = member_geometries.get(_entity_id(item))
             if membership_method == "storey_geometry_candidates":
                 overlap = _bbox_intersects(result.get("geometry"), item_geometry)
                 if overlap is False:
