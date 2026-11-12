@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "🚀 1. Kiểm tra Phần B (Tools 7, 9)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_part_b.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONIOENCODING": "utf-8"
+            }
+        },
+        {
+            "name": "🤖 2. Chạy Demo Agent Pipeline",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/demo_part_b_pipeline.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONIOENCODING": "utf-8"
+            }
+        },
+        {
+            "name": "🏗️ 3. Tạo lại File IFC Mẫu",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/core/generate_sample_ifc.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
