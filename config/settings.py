@@ -17,8 +17,8 @@ class Settings(BaseSettings):
 
     app_env: Literal["dev", "test", "prod"] = "dev" #giá trị mặc định là dev
     log_level: Literal["debug", "info", "warning", "error", "critical"] = "info" #giá trị mặc định là info
-    supabase_url: HttpUrl #kiểm tra đường dẫn web hợp lệ
-    supabase_key: SecretStr #đảm bảo không in ra mật khẩu
+    supabase_url: HttpUrl | None = None #kiểm tra đường dẫn web hợp lệ
+    supabase_key: SecretStr | None = None #đảm bảo không in ra mật khẩu
 
     @property 
     def supabase_configured(self) -> bool:
