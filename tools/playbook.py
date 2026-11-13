@@ -23,6 +23,14 @@ TABLES = {
 
 
 def _rows(client: Any, table: str, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    if callable(getattr(client, "cursor", None)):
+        if table not in TABLES.values():
+            raise ValueError(f"Bảng Playbook không được cho phép: {table}")
+        with client.cursor() as cursor:
+            cursor.execute(f'SELECT * FROM public."{table}"')
+            columns = [column[0] for column in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
     query = client.table(table).select("*")
     for key, value in (filters or {}).items():
         if value is not None:

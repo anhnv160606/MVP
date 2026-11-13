@@ -9,11 +9,13 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from . import calculation, ifc_read, ifc_write, placement, playbook, questionnaire
+from database.postgres import connect_from_env
 
 
 def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
                          ifc_model_provider: Callable[[], Any] | None = None,
                          model_adapter_provider: Callable[[], Any] | None = None,
+                         object_rules_client_provider: Callable[[], Any] | None = None,
                          is_plan_approved: Callable[[str, int], bool] | None = None) -> dict[str, Any]:
     """Bind session-scoped dependencies without exposing credentials to the LLM."""
     def model():
@@ -98,21 +100,36 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
                 "per_space_requirements", "declared_loads", "special_devices"
             )}
         if name == "playbook_get_object_rules":
-            result = playbook.playbook_get_object_rules(
-                supabase_client, args["device_type"], args["space_type"], args["project_standard"]
-            )
+            rules_client = (object_rules_client_provider()
+                            if object_rules_client_provider else connect_from_env())
+            try:
+                result = playbook.playbook_get_object_rules(
+                    rules_client, args["device_type"], args["space_type"], args["project_standard"]
+                )
+            finally:
+                close = getattr(rules_client, "close", None)
+                if callable(close):
+                    close()
             return {"rules": result["rules"]}
         if name == "playbook_query_devices":
-            result = playbook.playbook_query_devices(
-                supabase_client, args["category"], args["filters"]
-            )
+            catalog_client = connect_from_env()
+            try:
+                result = playbook.playbook_query_devices(
+                    catalog_client, args["category"], args["filters"]
+                )
+            finally:
+                catalog_client.close()
             return [{key: device.get(key) for key in (
                 "module_id", "name", "ifc_class", "specs", "rated_power", "geometry_ref"
             )} for device in result["devices"]]
         if name == "playbook_get_load_class":
-            result = playbook.playbook_get_load_class(
-                supabase_client, args["space_type"], args["device_category"]
-            )
+            load_client = connect_from_env()
+            try:
+                result = playbook.playbook_get_load_class(
+                    load_client, args["space_type"], args["device_category"]
+                )
+            finally:
+                load_client.close()
             rows = result["load_classes"]
             exact = [row for row in rows if str(row.get("load_class_name") or "").casefold()
                      == args["device_category"].casefold()]
@@ -122,9 +139,13 @@ def build_phase2_toolset(*, project_id: str, store: Any, supabase_client: Any,
             )}
         if name == "playbook_get_terminal_class":
             requirements = args["connection_requirements"]
-            result = playbook.playbook_get_terminal_class(
-                supabase_client, args["device_type"], requirements
-            )
+            terminal_client = connect_from_env()
+            try:
+                result = playbook.playbook_get_terminal_class(
+                    terminal_client, args["device_type"], requirements
+                )
+            finally:
+                terminal_client.close()
             rows = result["terminal_classes"]
             exact = [row for row in rows if str(row.get("terminal_class_name") or "").casefold()
                      == args["device_type"].casefold()]

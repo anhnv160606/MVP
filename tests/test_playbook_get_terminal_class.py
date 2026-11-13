@@ -6,14 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 
-from playbook_fixture import SamplePlaybookClient
 from tools.phase2 import build_phase2_toolset
 
 
 def main():
     toolset = build_phase2_toolset(
         project_id="tool-6-test-project", store=None,
-        supabase_client=SamplePlaybookClient(),
+        supabase_client=None,
     )
     output = toolset["execute"]("playbook_get_terminal_class", {
         "device_type": "Điểm đèn trần",
