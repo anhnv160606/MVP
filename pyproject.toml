@@ -20,4 +20,4 @@ dependencies = [
 electrical-design = "electrical_design.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["electrical_design", "config"]
+packages = ["electrical_design", "config", "database"]
