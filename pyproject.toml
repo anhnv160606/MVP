@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "electrical-design-agent"
+version = "0.1.0"
+description = "Backend for IFC-based electrical design"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic-settings>=2.7,<3",
+    "supabase>=2,<3",
+    "ifcopenshell>=0.8,<0.9",
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+]
+
+[project.scripts]
+electrical-design = "electrical_design.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["electrical_design", "config"]
