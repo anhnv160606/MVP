@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
 
     except ValidationError as e:
         field = sorted({str(error["loc"][0]) for error in e.errors()})
-        parser.exit(2, f"Thiếu hoặc không hợp lệ các biến môi trường: {', '.join(field)}\n{e}")
+        parser.exit(2, f"Thiếu hoặc không hợp lệ các biến môi trường: {', '.join(field)}\n")
 
     configured = settings.supabase_configured
     print(
