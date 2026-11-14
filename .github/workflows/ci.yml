@@ -1,0 +1,44 @@
+name: CI Check
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Chặn file nặng vượt quá 50MB
+        run: |
+          LARGE_FILES=$(find . -not -path './.git/*' -type f -size +50M)
+          if [ -n "$LARGE_FILES" ]; then
+            echo "Lỗi: Phát hiện file nặng vượt quá 50MB:"
+            echo "$LARGE_FILES"
+            exit 1
+          fi
+
+      - name: Cài đặt Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cài đặt thư viện
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f pyproject.toml ]; then pip install -e .; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest ruff
+
+      - name: Kiểm tra lỗi cú pháp Python (Ruff)
+        run: |
+          ruff check . --select E9,F63,F7,F82
+
+      - name: Chạy unit test (nếu có thư mục tests)
+        run: |
+          if [ -d "tests" ]; then pytest; else echo "Chưa có thư mục tests, bỏ qua."; fi
