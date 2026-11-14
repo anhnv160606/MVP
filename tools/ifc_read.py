@@ -1,12 +1,13 @@
 """Tool 7: liệt kê thiết bị đã có trong mô hình IFC."""
 
+import os
 from pathlib import Path
 from typing import Any
 
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
 
-from ifc_engine.reader import IfcReader
+from ifc_engine.reader import IfcReader, PlaybookReader
 
 
 DEFAULT_DEVICE_TYPES = (
@@ -28,36 +29,13 @@ def ifc_list_placed_devices(
     storey_id: str | None = None,
     ifc_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Liệt kê thiết bị và đối tượng hiện có trong IFC để lập phương án bố trí.
+    """Lấy thiết bị theo GlobalId phòng/tầng, dùng quan hệ không gian của IFC.
 
-    Gọi trước khi đề xuất thiết bị mới để xem hiện trạng. Lọc theo quan hệ
-    chứa/tham chiếu không gian và cấu trúc tầng của IFC; không suy ra phòng
-    từ tọa độ hoặc bounding box. Kết quả có thể gồm nội thất và proxy.
-
-    Args:
-        ifc_file_path: Đường dẫn đến file IFC cần đọc, bắt buộc.
-        space_id: GlobalId của IfcSpace; None để không lọc theo phòng.
-        storey_id: GlobalId của IfcBuildingStorey; None để không lọc theo tầng.
-            Nếu truyền cả hai, một chuỗi quan hệ không gian phải thỏa cả hai.
-        ifc_types: Danh sách tên lớp IFC cần lấy, gồm cả lớp con. None dùng
-            DEFAULT_DEVICE_TYPES (các nhóm MEP, proxy và nội thất); [] trả [].
-
-    Returns:
-        Danh sách sắp xếp theo element_id; mỗi phần tử gồm:
-        - element_id: GlobalId của đối tượng IFC.
-        - device_type: ObjectType, hoặc Name, hoặc tên lớp IFC; là thông tin
-          gốc, chưa chắc là mã loại thiết bị được chuẩn hóa.
-        - space_id: GlobalId phòng theo quan hệ IFC, hoặc None nếu không rõ.
-        - position: {x, y, z} của gốc ObjectPlacement trong hệ tọa độ model,
-          đơn vị mét; None nếu thiếu placement. Đây không phải tâm hình học.
-        - properties: {ifc_type, name, property_sets} từ IFC.
-
-    Raises:
-        ValueError: GlobalId phòng/tầng sai loại hoặc ifc_types chứa lớp không
-            có trong schema IFC. Lỗi mở file hoặc đọc IFC có thể được truyền ra.
-
-    Lưu ý: nếu lọc theo phòng, đối tượng không có quan hệ phòng phù hợp sẽ
-    không xuất hiện; danh sách rỗng không chứng minh phòng không có thiết bị.
+    Tọa độ là gốc ObjectPlacement trong hệ tọa độ model, đơn vị mét; None
+    nếu không có placement. Không suy đoán phòng từ bounding box. Khi không
+    lọc phòng, thiết bị không có quan hệ IfcSpace được trả về với space_id=None.
+    ifc_types cho phép giới hạn các lớp IFC, mặc định gồm thiết bị MEP, proxy
+    và nội thất để phục vụ tránh trùng và bố trí theo nội thất.
     """
     reader = IfcReader(Path(ifc_file_path))
     model = reader.model
@@ -124,3 +102,67 @@ def ifc_list_placed_devices(
                 },
             })
     return sorted(result, key=lambda item: item["element_id"])
+
+
+def _default_ifc_path() -> Path:
+    """Tìm đường dẫn mô hình mặc định mà không thêm tham số cho tool."""
+    configured = os.getenv("IFC_FILE_PATH")
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(f"Không tìm thấy IFC_FILE_PATH: {path}")
+        return path
+
+    project_root = Path(__file__).resolve().parents[1]
+    for relative_path in (
+        Path("ifc_file/ctr.ifc"),
+        Path("ifc_file/A.ifc"),
+        Path("ctr.ifc"),
+        Path("A.ifc"),
+        Path("../ctr.ifc"),
+        Path("../A.ifc"),
+    ):
+        path = project_root / relative_path
+        if path.is_file():
+            return path
+    raise FileNotFoundError(
+        "Không tìm thấy IFC. Đặt IFC_FILE_PATH hoặc thêm file vào ifc_file/."
+    )
+
+
+def ifc_get_placement_context(space_id: str) -> dict[str, Any]:
+    """Tool 1: chỉ nhận space_id; IFC được đọc và chuẩn hóa bởi IfcReader."""
+    return IfcReader(_default_ifc_path()).get_space_context(space_id)
+
+
+def playbook_get_object_rules(
+    device_type: str,
+    space_type: str,
+    project_standard: str,
+) -> dict[str, Any]:
+    """Tool 3: tra quy tắc đối tượng và quy tắc phòng từ Playbook."""
+    return PlaybookReader().get_object_rules(device_type, space_type, project_standard)
+
+
+def playbook_query_devices(
+    category: str,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Tool 4: tìm thiết bị có thật trong các catalog Playbook."""
+    return PlaybookReader().query_devices(category, filters)
+
+
+def playbook_get_load_class(
+    space_type: str,
+    device_category: str,
+) -> dict[str, Any]:
+    """Tool 5: tra lớp phụ tải; không trả hệ số nhu cầu như thể là loại tải."""
+    return PlaybookReader().get_load_class(space_type, device_category)
+
+
+def playbook_get_terminal_class(
+    device_type: str,
+    connection_requirements: Any,
+) -> dict[str, Any]:
+    """Tool 6: tra lớp đầu cuối và thông tin kết nối hiện có trong Playbook."""
+    return PlaybookReader().get_terminal_class(device_type, connection_requirements)
