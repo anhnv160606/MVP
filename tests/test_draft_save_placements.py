@@ -11,11 +11,11 @@ from postgres_fixture import fail_after_insert, setup_postgres, stop_failing_ins
 from tools.ifc_write import draft_save_placements
 
 
-def proposal(proposed_id, position=None):
+def proposal(proposed_id, position=None, room_name:str = None):
     return {
         "proposed_id": proposed_id,
         "device_type": "socket",
-        "space_id": "room-1",
+        "space_id": room_name,
         "host_id": "wall-1",
         "position": [1, 2, 0.4] if position is None else position,
         "orientation": {"yaw": 90},
