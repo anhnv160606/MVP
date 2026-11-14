@@ -1,0 +1,20 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python environments, downloads and generated files
+.venv/
+.python/
+.uv-cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Local IFC working files
+*.ifc
+ifc_file/
