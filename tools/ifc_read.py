@@ -28,13 +28,36 @@ def ifc_list_placed_devices(
     storey_id: str | None = None,
     ifc_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Lấy thiết bị theo GlobalId phòng/tầng, dùng quan hệ không gian của IFC.
+    """Liệt kê thiết bị và đối tượng hiện có trong IFC để lập phương án bố trí.
 
-    Tọa độ là gốc ObjectPlacement trong hệ tọa độ model, đơn vị mét; None
-    nếu không có placement. Không suy đoán phòng từ bounding box. Khi không
-    lọc phòng, thiết bị không có quan hệ IfcSpace được trả về với space_id=None.
-    ifc_types cho phép giới hạn các lớp IFC, mặc định gồm thiết bị MEP, proxy
-    và nội thất để phục vụ tránh trùng và bố trí theo nội thất.
+    Gọi trước khi đề xuất thiết bị mới để xem hiện trạng. Lọc theo quan hệ
+    chứa/tham chiếu không gian và cấu trúc tầng của IFC; không suy ra phòng
+    từ tọa độ hoặc bounding box. Kết quả có thể gồm nội thất và proxy.
+
+    Args:
+        ifc_file_path: Đường dẫn đến file IFC cần đọc, bắt buộc.
+        space_id: GlobalId của IfcSpace; None để không lọc theo phòng.
+        storey_id: GlobalId của IfcBuildingStorey; None để không lọc theo tầng.
+            Nếu truyền cả hai, một chuỗi quan hệ không gian phải thỏa cả hai.
+        ifc_types: Danh sách tên lớp IFC cần lấy, gồm cả lớp con. None dùng
+            DEFAULT_DEVICE_TYPES (các nhóm MEP, proxy và nội thất); [] trả [].
+
+    Returns:
+        Danh sách sắp xếp theo element_id; mỗi phần tử gồm:
+        - element_id: GlobalId của đối tượng IFC.
+        - device_type: ObjectType, hoặc Name, hoặc tên lớp IFC; là thông tin
+          gốc, chưa chắc là mã loại thiết bị được chuẩn hóa.
+        - space_id: GlobalId phòng theo quan hệ IFC, hoặc None nếu không rõ.
+        - position: {x, y, z} của gốc ObjectPlacement trong hệ tọa độ model,
+          đơn vị mét; None nếu thiếu placement. Đây không phải tâm hình học.
+        - properties: {ifc_type, name, property_sets} từ IFC.
+
+    Raises:
+        ValueError: GlobalId phòng/tầng sai loại hoặc ifc_types chứa lớp không
+            có trong schema IFC. Lỗi mở file hoặc đọc IFC có thể được truyền ra.
+
+    Lưu ý: nếu lọc theo phòng, đối tượng không có quan hệ phòng phù hợp sẽ
+    không xuất hiện; danh sách rỗng không chứng minh phòng không có thiết bị.
     """
     reader = IfcReader(Path(ifc_file_path))
     model = reader.model

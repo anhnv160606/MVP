@@ -23,11 +23,42 @@ def engine_validate_placements(
     rules: dict[str, Any] | None = None,
     ifc_file_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Kiểm tra proposals; coordinates và các ngưỡng dùng mét.
+    """Kiểm tra bước đầu các vị trí do AI hoặc kỹ sư đề xuất trước khi lưu IFC.
 
-    rules hỗ trợ min_separation_m. Rule khác được báo chưa kiểm tra.
-    `valid` là không có lỗi phát hiện được; `complete` luôn False vì bbox
-    không chứng minh điểm nằm trong phòng hoặc thiết bị gắn đúng bề mặt.
+    Gọi sau khi có proposals và context của cùng model IFC. Tool kiểm tra
+    cấu trúc, ID, bounding box phòng/host, gần trùng vị trí và khả năng va
+    chạm với bounding box cửa, cửa sổ, cột, nội thất và proxy. Đây là kiểm
+    tra gần đúng bằng điểm gốc, không phải kiểm tra va chạm hình học đầy đủ.
+
+    Args:
+        proposals: Danh sách object. Mỗi object cần proposed_id, device_type,
+            space_id (GlobalId IfcSpace), host_id (GlobalId IfcProduct) và
+            position={x, y, z} là số hữu hạn tính bằng mét trong hệ tọa độ
+            model. orientation={x, y, z} thiếu/sai sẽ cảnh báo; hướng vẫn
+            chưa được kiểm định. rule_ids nếu có sẽ được báo chưa kiểm tra.
+        placement_context: Object; có thể chứa existing_devices từ Tool 7.
+            Nếu thiếu hoặc None, tool tự gọi Tool 7 cho toàn bộ model. Có thể
+            chứa ifc_file_path nếu không truyền tham số cùng tên riêng.
+        rules: Object tùy chọn; chỉ hỗ trợ min_separation_m là số không âm,
+            dùng ngưỡng khoảng cách 3D để cảnh báo gần trùng. Rule khác được
+            báo là chưa kiểm tra. Khi không có ngưỡng, chỉ cảnh báo khoảng cách
+            dưới 0.001 m; không mặc định đó là tiêu chuẩn thiết kế.
+        ifc_file_path: Đường dẫn IFC; ưu tiên hơn đường dẫn trong context.
+            Bắt buộc cung cấp ở một trong hai nơi.
+
+    Returns:
+        Object gồm valid (True khi không phát hiện errors), complete (hiện
+        luôn False), errors và warnings (danh sách {code, device_id, message}),
+        suggested_fixes (hiện luôn []). valid=True không xác nhận thiết kế an
+        toàn hoặc tuân thủ Playbook; đọc warnings và yêu cầu kỹ sư kiểm tra.
+
+    Raises:
+        ValueError: proposals/context/rules sai kiểu, thiếu đường dẫn IFC hoặc
+            min_separation_m không hợp lệ. Lỗi đọc file/model có thể truyền ra.
+
+    Giới hạn: chưa kiểm tra chính xác thể tích phòng, bề mặt và pháp tuyến
+    host, kích thước thiết bị, vùng mở cửa hoặc nội dung rule Playbook; không
+    tự sửa proposals, ghi IFC hay phê duyệt thiết kế.
     """
     errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -181,7 +212,18 @@ def engine_validate_placements(
 
 
 def validate_proposals_file(proposals_file: str | Path, ifc_file_path: str | Path, rules: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Đọc JSON có dạng {\"proposals\": [...]} hoặc một mảng proposals."""
+    """Đọc file JSON proposals rồi gọi engine_validate_placements.
+
+    Args:
+        proposals_file: JSON UTF-8 chứa {"proposals": [...]} hoặc trực tiếp
+            một mảng proposals theo schema của engine_validate_placements.
+        ifc_file_path: Đường dẫn file IFC dùng đối chiếu.
+        rules: Object quy tắc tùy chọn, ví dụ {"min_separation_m": 0.25}.
+
+    Returns:
+        Kết quả kiểm định của engine_validate_placements. Hàm tự lấy thiết bị
+        hiện có từ IFC. Lỗi đọc JSON/IFC hoặc đầu vào không hợp lệ được truyền ra.
+    """
     with Path(proposals_file).open(encoding="utf-8") as stream:
         data = json.load(stream)
     proposals = data.get("proposals") if isinstance(data, dict) else data
