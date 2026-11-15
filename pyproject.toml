@@ -24,8 +24,3 @@ electrical-design = "electrical_design.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["electrical_design", "config", "database"]
-
-[dependency-groups]
-dev = [
-    "pytest>=9.2.0",
-]
