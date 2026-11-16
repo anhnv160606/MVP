@@ -369,3 +369,238 @@ def ifc_get_placement_context(space_id: str) -> dict[str, Any]:
     if result["coordinate_system"]["unit"] is None:
         missing.append("coordinate_system")
     return result
+
+
+def _get_supabase_client():
+    """Tạo Supabase Client theo cấu hình Settings hiện có của dự án."""
+    from config.settings import Settings
+    from database.supabase_client import get_supabase_client
+
+    return get_supabase_client(Settings())
+
+
+def _playbook_rows(client, table: str) -> list[dict[str, Any]]:
+    """Đọc toàn bộ hàng cần tra từ một bảng Playbook."""
+    response = client.table(table).select("*").execute()
+    return response.data or []
+
+
+def _room_matches(scope: Any, space_type: str) -> bool:
+    scope_text = _normalize_text(scope)
+    room_text = _normalize_text(space_type)
+    if not scope_text or not room_text:
+        return False
+    if "cac phong" in scope_text or "cac khong gian" in scope_text:
+        return True
+    scopes = [part.strip() for part in scope_text.replace(",", ";").split(";")]
+    return any(part and (part in room_text or room_text in part) for part in scopes)
+
+
+def _device_matches(query: str, *values: Any) -> bool:
+    query_text = _normalize_text(query)
+    if not query_text:
+        return False
+    value_text = " ".join(_normalize_text(value) for value in values if value is not None)
+    value_text = value_text.replace(",", " ").replace(";", " ").replace("/", " ")
+    if query_text in value_text or any(
+        _normalize_text(value) and _normalize_text(value) in query_text
+        for value in values if value is not None
+    ):
+        return True
+    ignored = {"diem", "cap", "dien", "thiet bi", "phong", "cho"}
+    query_words = {word for word in query_text.split() if len(word) > 2 and word not in ignored}
+    value_words = {word for word in value_text.split() if len(word) > 2 and word not in ignored}
+    return bool(query_words & value_words)
+
+
+def _row_matches_filters(row: dict[str, Any], filters: dict[str, Any] | None) -> bool:
+    for key, expected in (filters or {}).items():
+        if expected is None or expected == "":
+            continue
+        if key not in row:
+            return False
+        actual = row[key]
+        if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
+            if actual != expected:
+                return False
+        elif _normalize_text(expected) not in _normalize_text(actual):
+            return False
+    return True
+
+
+def playbook_get_object_rules(
+    device_type: str, space_type: str, project_standard: str
+) -> dict[str, Any]:
+    """Tool 3: tra quy tắc đối tượng và quy tắc phòng áp dụng."""
+    client = _get_supabase_client()
+    rules = []
+    for row in _playbook_rows(client, "quy_tac_doi_tuong"):
+        keywords = row.get("tu_khoa_nhan_dien") or []
+        if isinstance(keywords, str):
+            keywords = keywords.replace(",", ";").split(";")
+        if not _device_matches(device_type, row.get("ten_quy_tac"), *keywords):
+            continue
+        if not _room_matches(row.get("khong_gian_thuong_gap"), space_type):
+            continue
+        rules.append({
+            "rule_id": row.get("ma_quy_tac"), "quantity_rule": None,
+            "spacing": None, "mounting_height": None, "host_type": None,
+            "constraints": [value for value in (
+                row.get("dieu_kien_bo_sung"), row.get("xu_ly_canh_bao")
+            ) if value],
+            "source": "Playbook > Quy tắc đối tượng",
+            "source_status": row.get("tinh_trang_kiem_chung"),
+            "scope": row.get("khong_gian_thuong_gap"),
+            "standard_applicability": "Chưa được nêu trong nguồn",
+            "raw_rule": row,
+        })
+
+    for row in _playbook_rows(client, "quy_tac_phong"):
+        if not _room_matches(row.get("loai_khong_gian"), space_type):
+            continue
+        if not _device_matches(device_type, row.get("thiet_bi_thuong_xet")):
+            continue
+        rules.append({
+            "rule_id": f"room:{row.get('id')}", "quantity_rule": None,
+            "spacing": None, "mounting_height": row.get("cao_do_lap_dat"),
+            "host_type": None,
+            "constraints": [value for value in (
+                row.get("nguyen_tac_bo_tri"), row.get("kiem_tra_bo_sung"),
+                row.get("gioi_han_canh_bao"),
+            ) if value],
+            "source": "Playbook > Quy tắc phòng",
+            "source_status": row.get("loai_du_lieu"),
+            "scope": row.get("loai_khong_gian"),
+            "standard_applicability": "Chưa được nêu trong nguồn",
+            "raw_rule": row,
+        })
+    return {"rules": rules}
+
+
+def playbook_query_devices(
+    category: str, filters: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Tool 4: tra catalog thiết bị có trong Playbook, không tự tạo mẫu."""
+    client = _get_supabase_client()
+    result = []
+    for table, key in (
+        ("mo_dun_thiet_bi", "ten_cau_hinh"),
+        ("thiet_bi_dong_cat", "ma_cau_hinh_mo_ta"),
+        ("dau_noi_dien", "ten_dau_noi"),
+    ):
+        for row in _playbook_rows(client, table):
+            if not _device_matches(category, *row.values()):
+                continue
+            if not _row_matches_filters(row, filters):
+                continue
+            result.append({
+                "module_id": row.get(key), "name": row.get(key),
+                "ifc_class": row.get("ifc_class"), "specs": row,
+                "rated_power": row.get("rated_power_w"),
+                "geometry_ref": row.get("geometry_ref"),
+            })
+    return result
+
+
+def playbook_get_load_class(space_type: str, device_category: str) -> dict[str, Any]:
+    """Tool 5: xác định lớp phụ tải phù hợp với không gian và thiết bị."""
+    client = _get_supabase_client()
+    category = _normalize_text(device_category)
+    aliases = (
+        (("den", "lighting"), "chieu sang"),
+        (("o cam", "socket", "outlet"), "o cam"),
+        (("dieu hoa", "air conditioner", "ac"), "dieu hoa"),
+        (("binh nong lanh", "water heater"), "binh nuoc nong"),
+        (("may bom", "pump"), "may bom"),
+    )
+    category = next((target for keys, target in aliases if any(
+        category == key or category.startswith(f"{key} ") for key in keys
+    )), category)
+    room = _normalize_text(space_type)
+    candidates = []
+    for row in _playbook_rows(client, "lop_phu_tai"):
+        searchable = _normalize_text(
+            f"{row.get('ten_lop_phu_tai', '')} {row.get('nhom_phu_tai', '')}"
+        )
+        if not category or category not in searchable:
+            continue
+        candidates.append((1 + (2 if room and room in searchable else 0), row))
+    if not candidates:
+        return {"load_class_id": None, "load_class_name": None, "load_type": None}
+    best_score = max(score for score, _ in candidates)
+    best = [row for score, row in candidates if score == best_score]
+    if len(best) != 1:
+        return {"load_class_id": None, "load_class_name": None, "load_type": None}
+    row = best[0]
+    return {
+        "load_class_id": row.get("ma_lop_phu_tai"),
+        "load_class_name": row.get("ten_lop_phu_tai"),
+        "load_type": row.get("nhom_phu_tai"),
+    }
+
+
+def playbook_get_terminal_class(
+    device_type: str, connection_requirements: Any
+) -> dict[str, Any]:
+    """Tool 6: tra lớp đầu cuối và đặc điểm kết nối trong Playbook."""
+    client = _get_supabase_client()
+    requirements = connection_requirements if isinstance(connection_requirements, dict) else {
+        "description": connection_requirements
+    }
+    loads = {
+        row.get("ma_lop_phu_tai"): row
+        for row in _playbook_rows(client, "lop_phu_tai")
+    }
+    candidates = []
+    for row in _playbook_rows(client, "lop_dau_cuoi"):
+        load = loads.get(row.get("lop_phu_tai_ma"), {})
+        if not _device_matches(
+            device_type, row.get("ten_lop_dau_cuoi"), load.get("ten_lop_phu_tai")
+        ):
+            continue
+        supply = _normalize_text(row.get("kieu_cap_dien"))
+        phases = []
+        if "mot pha" in supply:
+            phases.append("1 pha")
+        if "ba pha" in supply:
+            phases.append("3 pha")
+        requested_phases = requirements.get("phases")
+        if requested_phases:
+            requested = requested_phases if isinstance(requested_phases, list) else [requested_phases]
+            requested_normalized = set()
+            for phase in requested:
+                phase_text = _normalize_text(phase)
+                if phase == 1 or "1 pha" in phase_text or "mot pha" in phase_text:
+                    requested_normalized.add("1 pha")
+                elif phase == 3 or "3 pha" in phase_text or "ba pha" in phase_text:
+                    requested_normalized.add("3 pha")
+                else:
+                    requested_normalized.add(phase_text)
+            if not requested_normalized.issubset(set(phases)):
+                continue
+        connection = requirements.get("connection_type")
+        if connection and _normalize_text(connection) not in _normalize_text(row.get("kieu_diem_ket_noi")):
+            continue
+        candidates.append((row, phases))
+
+    if len(candidates) != 1:
+        return {
+            "terminal_class_id": None, "voltage": None, "phases": [],
+            "connection_specs": {"missing_data": ["unique_terminal_class", "voltage"]},
+        }
+    row, phases = candidates[0]
+    return {
+        "terminal_class_id": row.get("ma_lop_dau_cuoi"),
+        "voltage": None,
+        "phases": phases,
+        "connection_specs": {
+            "power_supply_type": row.get("kieu_cap_dien"),
+            "connection_type": row.get("kieu_diem_ket_noi"),
+            "circuit_group": row.get("nhom_mach"),
+            "applicable_space": row.get("khong_gian_ap_dung"),
+            "voltage_drop_limit_percent": row.get("gioi_han_sut_ap_pct"),
+            "notes": row.get("ghi_chu"),
+            "source_status": row.get("tinh_trang_kiem_chung"),
+            "missing_data": ["voltage"] if row.get("dien_ap_v") is None else [],
+        },
+    }
