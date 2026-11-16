@@ -1,4 +1,4 @@
-"""Write managed electrical device occurrences into an IFC4 model."""
+"""Các hàm cơ bản để ghi và kiểm tra thiết bị điện trong IFC4."""
 
 import json
 import math
@@ -20,7 +20,7 @@ import numpy as np
 
 
 class IfcWriteError(ValueError):
-    """An IFC model or a write primitive could not satisfy its contract."""
+    """Dữ liệu hoặc thao tác ghi IFC không hợp lệ."""
 
 
 _PSET = "MVP_Placement"
@@ -46,17 +46,17 @@ _DEFAULT_DIMENSIONS = {
 
 
 def open_model(path):
-    """Open an IFC4 model with a declared length scale."""
+    """Mở mô hình IFC4 có một IfcProject và đơn vị độ dài hợp lệ."""
     model = ifcopenshell.open(str(path))
     if model.schema != "IFC4" or len(model.by_type("IfcProject")) != 1:
-        raise IfcWriteError("Expected an IFC4 file with one IfcProject")
+        raise IfcWriteError("Cần tệp IFC4 có đúng một IfcProject.")
     units = model.by_type("IfcProject")[0].UnitsInContext
     length_units = [unit for unit in units.Units if getattr(unit, "UnitType", None) == "LENGTHUNIT"] if units else []
     if len(length_units) != 1:
-        raise IfcWriteError("The IFC project must declare one length unit")
+        raise IfcWriteError("IfcProject phải khai báo đúng một đơn vị độ dài.")
     scale = ifcopenshell.util.unit.calculate_unit_scale(model)
     if not math.isfinite(scale) or scale <= 0:
-        raise IfcWriteError("The IFC project has an invalid length unit")
+        raise IfcWriteError("Đơn vị độ dài của IfcProject không hợp lệ.")
     return model
 
 
@@ -65,6 +65,7 @@ def _guid(*parts):
 
 
 def device_guid(project_id, plan_id, proposed_id):
+    """Tạo GlobalId IFC ổn định từ dự án, phương án và mã đề xuất."""
     return _guid("placement", project_id, plan_id, proposed_id)
 
 
@@ -78,7 +79,7 @@ def _by_guid(model, guid):
 def _reference(model, guid, expected_class, field):
     item = _by_guid(model, guid)
     if item is None or not item.is_a(expected_class):
-        raise IfcWriteError(f"{field}={guid!r} must refer to an {expected_class} GlobalId")
+        raise IfcWriteError(f"{field}={guid!r} phải là GlobalId của {expected_class}.")
     return item
 
 
@@ -88,14 +89,15 @@ def _number(value, field):
             return float(value)
     except OverflowError:
         pass
-    raise IfcWriteError(f"{field} must be a finite number")
+    raise IfcWriteError(f"{field} phải là số hữu hạn.")
 
 
 def coordinates(value, field):
+    """Đọc ba tọa độ hữu hạn từ danh sách hoặc đối tượng x, y, z."""
     if isinstance(value, dict) and {"x", "y", "z"} <= value.keys():
         value = [value[axis] for axis in ("x", "y", "z")]
     if not isinstance(value, (list, tuple)) or len(value) != 3:
-        raise IfcWriteError(f"{field} must contain three coordinates")
+        raise IfcWriteError(f"{field} phải có đủ ba tọa độ x, y, z.")
     return tuple(_number(number, field) for number in value)
 
 
@@ -128,13 +130,14 @@ class DeviceSpec:
 
 
 def device_spec(project_id, plan_id, proposal):
+    """Chuyển đề xuất thành thông số ghi IFC, dùng mét và yaw theo độ."""
     device_type = proposal["device_type"]
     ifc_class = proposal.get("ifc_class", _DEVICE_CLASSES.get(device_type, device_type))
     if not isinstance(ifc_class, str) or ifc_class not in _DEFAULT_DIMENSIONS:
-        raise IfcWriteError(f"Unsupported electrical IFC class for {device_type!r}")
+        raise IfcWriteError(f"Chưa hỗ trợ lớp IFC cho thiết bị {device_type!r}.")
     module_id = proposal.get("module_id")
     if module_id is not None and (not isinstance(module_id, str) or not module_id.strip()):
-        raise IfcWriteError("module_id must be a non-empty catalog identifier")
+        raise IfcWriteError("module_id phải là mã thiết bị hợp lệ trong danh mục.")
     orientation = proposal.get("orientation", 0)
     if isinstance(orientation, dict) and orientation.keys() == {"yaw"}:
         orientation = orientation["yaw"]
@@ -143,7 +146,7 @@ def device_spec(project_id, plan_id, proposal):
         dimensions = proposal["dimensions_m"]
     dimensions = coordinates(dimensions, "dimensions_m")
     if min(dimensions) <= 0:
-        raise IfcWriteError("dimensions_m must be positive")
+        raise IfcWriteError("Các kích thước dimensions_m phải lớn hơn 0.")
     type_name = module_id or device_type
     return DeviceSpec(
         guid=device_guid(project_id, plan_id, proposal["proposed_id"]),
@@ -171,21 +174,28 @@ def _body_context(model):
     )
 
 
-def create_device(model, spec):
-    if _by_guid(model, spec.guid) is not None:
-        raise IfcWriteError(f"Existing IFC entity uses device GlobalId {spec.guid}")
+def resolve_device_mount(model, spec):
+    """Tìm phòng và phần tử gắn thiết bị theo GlobalId, kiểm tra lớp IFC."""
     space = _reference(model, spec.space_id, "IfcSpace", "space_id")
     host = None
     if spec.host_id is not None:
         host = _reference(model, spec.host_id, "IfcBuildingElement", "host_id")
-        if _by_guid(model, spec.host_relation_guid) is not None:
-            raise IfcWriteError("Existing IFC entity uses the placement host relationship ID")
+    return space, host
+
+
+def create_device(model, spec):
+    """Tạo thiết bị, gán IFC type, phòng, vị trí và phần tử gắn nếu có."""
+    if _by_guid(model, spec.guid) is not None:
+        raise IfcWriteError(f"GlobalId thiết bị {spec.guid} đã tồn tại trong IFC.")
+    space, host = resolve_device_mount(model, spec)
+    if host is not None and _by_guid(model, spec.host_relation_guid) is not None:
+        raise IfcWriteError("GlobalId của quan hệ gắn thiết bị đã tồn tại.")
     device_type = _by_guid(model, spec.type_guid)
     if device_type is None:
         device_type = ifcopenshell.api.root.create_entity(model, ifc_class=spec.type_class, name=spec.type_name)
         device_type.GlobalId = spec.type_guid
     elif device_type.is_a() != spec.type_class or device_type.Name != spec.type_name:
-        raise IfcWriteError(f"Existing IFC entity conflicts with type {spec.type_name!r}")
+        raise IfcWriteError(f"IFC type hiện có không khớp với {spec.type_name!r}.")
 
     device = ifcopenshell.api.root.create_entity(model, ifc_class=spec.ifc_class, name=spec.type_name)
     device.GlobalId = spec.guid
@@ -207,6 +217,8 @@ def create_device(model, spec):
         "DeviceType": proposal["device_type"],
         "SpaceGlobalId": spec.space_id,
     }
+    if "device_id" in proposal:
+        properties["DeviceId"] = proposal["device_id"]
     if spec.host_id is not None:
         properties["HostGlobalId"] = spec.host_id
     ifcopenshell.api.pset.edit_pset(
@@ -229,7 +241,7 @@ def create_device(model, spec):
 def _device_properties(model, proposal):
     values = {}
     for key, value in proposal.get("properties", {}).items():
-        # Use IFC types for scalar properties. Encode structured values as JSON.
+        # Dùng kiểu IFC cho giá trị đơn và chuỗi JSON cho đối tượng hoặc danh sách.
         if isinstance(value, str):
             value = model.create_entity("IfcText", value)
         elif isinstance(value, (dict, list)):
@@ -249,32 +261,36 @@ def _device_properties(model, proposal):
 def _verify_body(device, spec, unit_scale):
     body = ifcopenshell.util.representation.get_representation(device, "Model", "Body", "MODEL_VIEW")
     if body is None or len(body.Items) != 1 or not body.Items[0].is_a("IfcExtrudedAreaSolid"):
-        raise IfcWriteError(f"IFC geometry is missing or invalid for {spec.guid}")
+        raise IfcWriteError(f"Thiết bị {spec.guid} thiếu hình học IFC hợp lệ.")
     solid = body.Items[0]
     profile = solid.SweptArea
     if not profile.is_a("IfcArbitraryClosedProfileDef") or not profile.OuterCurve.is_a("IfcIndexedPolyCurve"):
-        raise IfcWriteError(f"IFC geometry profile is invalid for {spec.guid}")
+        raise IfcWriteError(f"Biên dạng hình học của thiết bị {spec.guid} không hợp lệ.")
     x, y = np.ptp(profile.OuterCurve.Points.CoordList, axis=0)
     dimensions = np.array([x, y, solid.Depth]) * unit_scale
     if not np.allclose(dimensions, spec.dimensions, rtol=0, atol=1e-7):
-        raise IfcWriteError(f"IFC geometry dimensions differ for {spec.guid}")
+        raise IfcWriteError(f"Kích thước IFC của thiết bị {spec.guid} không khớp.")
 
 
 def verify_device(model, spec):
+    """Đối chiếu thiết bị trong IFC với thông số dự kiến sau khi ghi."""
     device = _reference(model, spec.guid, spec.ifc_class, "device")
     pset = ifcopenshell.util.element.get_pset(device, _PSET, should_inherit=False) or {}
+    proposal = json.loads(spec.payload)
     container = ifcopenshell.util.element.get_container(device, should_get_direct=True)
     device_type = ifcopenshell.util.element.get_type(device)
     host_link = _by_guid(model, spec.host_relation_guid)
     if (
         device.is_a() != spec.ifc_class or pset.get("Proposal") != spec.payload
+        or pset.get("ProposedId") != proposal["proposed_id"] or pset.get("DeviceId") != proposal.get("device_id")
+        or pset.get("DeviceType") != proposal["device_type"]
         or pset.get("SpaceGlobalId") != spec.space_id or pset.get("HostGlobalId") != spec.host_id
         or container is None or container.GlobalId != spec.space_id
         or device_type is None or device_type.GlobalId != spec.type_guid
         or device_type.is_a() != spec.type_class or device_type.Name != spec.type_name
         or device.ObjectPlacement is None or not device.ObjectPlacement.is_a("IfcLocalPlacement")
     ):
-        raise IfcWriteError(f"IFC verification failed for device {spec.guid}")
+        raise IfcWriteError(f"Thông tin IFC của thiết bị {spec.guid} không khớp.")
     if spec.host_id is None:
         valid_host = host_link is None
     else:
@@ -286,13 +302,12 @@ def verify_device(model, spec):
     unit_scale = ifcopenshell.util.unit.calculate_unit_scale(model)
     matrix[:3, 3] *= unit_scale
     if not valid_host or not np.allclose(matrix, spec.matrix(), rtol=0, atol=1e-7):
-        raise IfcWriteError(f"IFC position or host verification failed for device {spec.guid}")
+        raise IfcWriteError(f"Vị trí, hướng hoặc phần tử gắn của thiết bị {spec.guid} không khớp.")
     _verify_body(device, spec, unit_scale)
-    proposal = json.loads(spec.payload)
     expected_properties = _device_properties(model, proposal)
     properties = ifcopenshell.util.element.get_pset(device, _PROPERTIES_PSET, should_inherit=False) or {}
     property_set_id = properties.pop("id", None)
-    # Read the property entities directly because get_pset reserves the key "id".
+    # Đọc trực tiếp thuộc tính vì get_pset dùng khóa "id" để trả mã của tập thuộc tính.
     property_set = model.by_id(property_set_id) if property_set_id is not None else None
     actual = {prop.Name: prop.NominalValue for prop in property_set.HasProperties} if property_set else {}
     if actual.keys() != expected_properties.keys() or any(
@@ -300,7 +315,7 @@ def verify_device(model, spec):
         or value.wrappedValue != expected_properties[key].wrappedValue
         for key, value in actual.items()
     ):
-        raise IfcWriteError(f"IFC properties differ for device {spec.guid}")
+        raise IfcWriteError(f"Thuộc tính IFC của thiết bị {spec.guid} không khớp.")
     return device, model.by_id(pset["id"]), property_set, host_link
 
 
@@ -316,7 +331,7 @@ def _inspect_removal(model, spec):
             or reference == host_link
         ):
             managed.add(reference)
-    # Placement-relative children can reference the placement rather than the device.
+    # Các đối tượng con có thể tham chiếu vị trí tương đối thay vì tham chiếu thiết bị.
     references.update(device.ObjectPlacement.ReferencedByPlacements)
     affected = [
         {
@@ -330,16 +345,17 @@ def _inspect_removal(model, spec):
 
 
 def get_removal_references(model, spec):
-    """Inspect the same relationships that the writer checks during apply."""
+    """Liệt kê các quan hệ ảnh hưởng khi xóa thiết bị."""
     return _inspect_removal(model, spec)[2]
 
 
 def remove_device(model, spec):
+    """Xóa thiết bị đã được quản lý nếu không còn tham chiếu bên ngoài."""
     device, host_link, affected = _inspect_removal(model, spec)
     blocker = next((reference for reference in affected if reference["blocks_removal"]), None)
     if blocker is not None:
         raise IfcWriteError(
-            f"Cannot replace or remove {spec.guid}: it has an external {blocker['ifc_class']} reference"
+            f"Không thể thay hoặc xóa {spec.guid} vì còn tham chiếu {blocker['ifc_class']}."
         )
     if host_link is not None:
         model.remove(host_link)
@@ -347,8 +363,9 @@ def remove_device(model, spec):
 
 
 def verify_batch(model, current, removed):
+    """Đối chiếu các thiết bị còn lại và xác nhận thiết bị đã xóa không còn trong IFC."""
     for spec in current.values():
         verify_device(model, spec)
     for spec in removed:
         if _by_guid(model, spec.guid) is not None or _by_guid(model, spec.host_relation_guid) is not None:
-            raise IfcWriteError(f"Removed device {spec.guid} still exists")
+            raise IfcWriteError(f"Thiết bị đã xóa {spec.guid} hoặc quan hệ gắn vẫn còn trong IFC.")
