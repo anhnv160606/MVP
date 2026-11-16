@@ -1,3 +1,5 @@
+from dataclasses import dataclass, field
+from hashlib import file_digest
 from pathlib import Path
 from typing import Any
 
@@ -135,3 +137,44 @@ class IfcReader:
             },
             "bbox_center": ((minimum + maximum) / 2).tolist(),
         }
+
+
+@dataclass(frozen=True)
+class SpatialIndex:
+    revision: str
+    rooms: dict[str, str | None]
+    floors: frozenset[str]
+    space_names: dict[str, str] = field(default_factory=dict)
+    storey_names: dict[str, str] = field(default_factory=dict)
+
+
+def read_spaces(path: str | Path) -> SpatialIndex:
+    """Build a validated room/storey index and pin it to the IFC file hash."""
+    from ifcopenshell.util.element import get_parent
+
+    path = Path(path)
+    with path.open("rb") as stream:
+        revision = file_digest(stream, "sha256").hexdigest()
+    model = ifcopenshell.open(str(path))
+    storey_names = {
+        storey.GlobalId: storey.Name or storey.GlobalId
+        for storey in model.by_type("IfcBuildingStorey")
+    }
+    rooms: dict[str, str | None] = {}
+    space_names: dict[str, str] = {}
+    for room in model.by_type("IfcSpace"):
+        parent = get_parent(room)
+        visited = {room.id()}
+        while parent and not parent.is_a("IfcBuildingStorey"):
+            if parent.id() in visited:
+                raise ValueError(f"Cyclic IFC containment for room {room.GlobalId}")
+            visited.add(parent.id())
+            parent = get_parent(parent)
+        if room.GlobalId in rooms:
+            raise ValueError(f"Duplicate IFC room GlobalId {room.GlobalId}")
+        rooms[room.GlobalId] = parent.GlobalId if parent else None
+        space_names[room.GlobalId] = room.LongName or room.Name or room.GlobalId
+    with path.open("rb") as stream:
+        if revision != file_digest(stream, "sha256").hexdigest():
+            raise ValueError("IFC changed during read")
+    return SpatialIndex(revision, rooms, frozenset(storey_names), space_names, storey_names)
