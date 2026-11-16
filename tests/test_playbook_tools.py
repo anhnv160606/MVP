@@ -19,6 +19,12 @@ class TestPlaybookTools(unittest.TestCase):
     def setUpClass(cls):
         cls.client = _get_supabase_client()
 
+    @classmethod
+    def tearDownClass(cls):
+        # Đóng kết nối HTTP/2 của postgrest client để hết ResourceWarning
+        if hasattr(cls.client, "postgrest") and hasattr(cls.client.postgrest, "session"):
+            cls.client.postgrest.session.close()
+
     @staticmethod
     def in_ket_qua(tool_name, result):
         print(f"\nKết quả {tool_name}:")

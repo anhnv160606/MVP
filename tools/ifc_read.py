@@ -400,17 +400,36 @@ def _device_matches(query: str, *values: Any) -> bool:
     query_text = _normalize_text(query)
     if not query_text:
         return False
-    value_text = " ".join(_normalize_text(value) for value in values if value is not None)
-    value_text = value_text.replace(",", " ").replace(";", " ").replace("/", " ")
-    if query_text in value_text or any(
-        _normalize_text(value) and _normalize_text(value) in query_text
-        for value in values if value is not None
-    ):
-        return True
-    ignored = {"diem", "cap", "dien", "thiet bi", "phong", "cho"}
-    query_words = {word for word in query_text.split() if len(word) > 2 and word not in ignored}
-    value_words = {word for word in value_text.split() if len(word) > 2 and word not in ignored}
-    return bool(query_words & value_words)
+
+    cleaned_values = []
+    for value in values:
+        if value is None:
+            continue
+        norm = _normalize_text(value)
+        if not norm:
+            continue
+        # 1. Khớp trực tiếp cụm từ nguyên vẹn (hai chiều)
+        if query_text in norm or norm in query_text:
+            return True
+        cleaned_values.append(norm)
+
+    if not cleaned_values:
+        return False
+
+    # 2. Nếu không khớp nguyên cụm, yêu cầu TẤT CẢ từ khóa lõi của query phải có mặt
+    # (tránh trường hợp "đèn trần" khớp nhầm với "công tắc điều khiển đèn" chỉ vì chung chữ "đèn")
+    ignored = {"diem", "cap", "dien", "thiet", "bi", "phong", "cho", "loai", "cac"}
+    query_words = {
+        word for word in query_text.replace(",", " ").replace(";", " ").split()
+        if len(word) > 1 and word not in ignored
+    }
+    if not query_words:
+        return False
+
+    value_text = " ".join(cleaned_values).replace(",", " ").replace(";", " ").replace("/", " ")
+    value_words = set(value_text.split())
+
+    return query_words.issubset(value_words)
 
 
 def _row_matches_filters(row: dict[str, Any], filters: dict[str, Any] | None) -> bool:
@@ -428,23 +447,54 @@ def _row_matches_filters(row: dict[str, Any], filters: dict[str, Any] | None) ->
     return True
 
 
+def _to_number(value: Any) -> int | float | None:
+    """Chuyển giá trị số từ Supabase (int, float, Decimal, chuỗi) về số Python."""
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(number) if number.is_integer() else number
+
+
+def _split_keywords(raw: Any) -> list[str]:
+    """tu_khoa_nhan_dien là cột mảng text; vẫn chấp nhận chuỗi ngăn cách bằng ; hoặc ,."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        raw = raw.replace(",", ";").split(";")
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
 def playbook_get_object_rules(
     device_type: str, space_type: str, project_standard: str
 ) -> dict[str, Any]:
-    """Tool 3: tra quy tắc đối tượng và quy tắc phòng áp dụng."""
+    """Tool 3: tra quy tắc đối tượng (quy_tac_doi_tuong) và quy tắc phòng (quy_tac_phong).
+
+    Mọi trường trả về đều lấy từ cột có thật trong DB. Các trường quantity_rule,
+    spacing, host_type đã bỏ vì không có cột nguồn. Trường không áp dụng cho
+    loại quy tắc đó (ví dụ mounting_height của quy tắc đối tượng) để None.
+    """
     client = _get_supabase_client()
-    rules = []
+    rules: list[dict[str, Any]] = []
+
     for row in _playbook_rows(client, "quy_tac_doi_tuong"):
-        keywords = row.get("tu_khoa_nhan_dien") or []
-        if isinstance(keywords, str):
-            keywords = keywords.replace(",", ";").split(";")
+        keywords = _split_keywords(row.get("tu_khoa_nhan_dien"))
         if not _device_matches(device_type, row.get("ten_quy_tac"), *keywords):
             continue
         if not _room_matches(row.get("khong_gian_thuong_gap"), space_type):
             continue
         rules.append({
-            "rule_id": row.get("ma_quy_tac"), "quantity_rule": None,
-            "spacing": None, "mounting_height": None, "host_type": None,
+            "rule_id": row.get("ma_quy_tac"),
+            "rule_name": row.get("ten_quy_tac"),
+            "rule_type": "object",
+            "terminal_class_id": row.get("lop_dau_cuoi_ma"),
+            "ifc_match_field": row.get("truong_ifc_doi_chieu"),
+            "match_method": row.get("phuong_thuc_khop"),
+            "keywords": keywords,
+            "placement_principle": None,
+            "mounting_height": None,
             "constraints": [value for value in (
                 row.get("dieu_kien_bo_sung"), row.get("xu_ly_canh_bao")
             ) if value],
@@ -461,12 +511,17 @@ def playbook_get_object_rules(
         if not _device_matches(device_type, row.get("thiet_bi_thuong_xet")):
             continue
         rules.append({
-            "rule_id": f"room:{row.get('id')}", "quantity_rule": None,
-            "spacing": None, "mounting_height": row.get("cao_do_lap_dat"),
-            "host_type": None,
+            "rule_id": f"room:{row.get('id')}",
+            "rule_name": row.get("loai_khong_gian"),
+            "rule_type": "room",
+            "terminal_class_id": None,
+            "ifc_match_field": None,
+            "match_method": None,
+            "keywords": [],
+            "placement_principle": row.get("nguyen_tac_bo_tri"),
+            "mounting_height": row.get("cao_do_lap_dat"),
             "constraints": [value for value in (
-                row.get("nguyen_tac_bo_tri"), row.get("kiem_tra_bo_sung"),
-                row.get("gioi_han_canh_bao"),
+                row.get("kiem_tra_bo_sung"), row.get("gioi_han_canh_bao")
             ) if value],
             "source": "Playbook > Quy tắc phòng",
             "source_status": row.get("loai_du_lieu"),
@@ -539,10 +594,41 @@ def playbook_get_load_class(space_type: str, device_category: str) -> dict[str, 
     }
 
 
+def _supply_phases(supply_type: Any) -> list[str]:
+    """Suy ra danh sách pha từ cột kieu_cap_dien (ví dụ 'Một pha hai dây hoặc ba pha bốn dây')."""
+    supply = _normalize_text(supply_type)
+    phases = []
+    if "mot pha" in supply:
+        phases.append("1 pha")
+    if "ba pha" in supply:
+        phases.append("3 pha")
+    return phases
+
+
+def _requested_phases(requested: Any) -> set[str]:
+    """Chuẩn hóa yêu cầu pha của người gọi về '1 pha' / '3 pha'."""
+    items = requested if isinstance(requested, list) else [requested]
+    normalized = set()
+    for phase in items:
+        text = _normalize_text(phase)
+        if phase == 1 or "1 pha" in text or "mot pha" in text:
+            normalized.add("1 pha")
+        elif phase == 3 or "3 pha" in text or "ba pha" in text:
+            normalized.add("3 pha")
+        else:
+            normalized.add(text)
+    return normalized
+
+
 def playbook_get_terminal_class(
     device_type: str, connection_requirements: Any
 ) -> dict[str, Any]:
-    """Tool 6: tra lớp đầu cuối và đặc điểm kết nối trong Playbook."""
+    """Tool 6: tra lớp đầu cuối (lop_dau_cuoi) và đặc điểm kết nối trong Playbook.
+
+    Điện áp lấy từ cột dien_ap_v. Với lớp hỗ trợ cả một pha lẫn ba pha, giá trị
+    này là một số duy nhất (hiện là dữ liệu test), nên missing_data chỉ báo thiếu
+    điện áp khi cột để trống.
+    """
     client = _get_supabase_client()
     requirements = connection_requirements if isinstance(connection_requirements, dict) else {
         "description": connection_requirements
@@ -551,6 +637,7 @@ def playbook_get_terminal_class(
         row.get("ma_lop_phu_tai"): row
         for row in _playbook_rows(client, "lop_phu_tai")
     }
+
     candidates = []
     for row in _playbook_rows(client, "lop_dau_cuoi"):
         load = loads.get(row.get("lop_phu_tai_ma"), {})
@@ -558,28 +645,14 @@ def playbook_get_terminal_class(
             device_type, row.get("ten_lop_dau_cuoi"), load.get("ten_lop_phu_tai")
         ):
             continue
-        supply = _normalize_text(row.get("kieu_cap_dien"))
-        phases = []
-        if "mot pha" in supply:
-            phases.append("1 pha")
-        if "ba pha" in supply:
-            phases.append("3 pha")
+        phases = _supply_phases(row.get("kieu_cap_dien"))
         requested_phases = requirements.get("phases")
-        if requested_phases:
-            requested = requested_phases if isinstance(requested_phases, list) else [requested_phases]
-            requested_normalized = set()
-            for phase in requested:
-                phase_text = _normalize_text(phase)
-                if phase == 1 or "1 pha" in phase_text or "mot pha" in phase_text:
-                    requested_normalized.add("1 pha")
-                elif phase == 3 or "3 pha" in phase_text or "ba pha" in phase_text:
-                    requested_normalized.add("3 pha")
-                else:
-                    requested_normalized.add(phase_text)
-            if not requested_normalized.issubset(set(phases)):
-                continue
+        if requested_phases and not _requested_phases(requested_phases).issubset(set(phases)):
+            continue
         connection = requirements.get("connection_type")
-        if connection and _normalize_text(connection) not in _normalize_text(row.get("kieu_diem_ket_noi")):
+        if connection and _normalize_text(connection) not in _normalize_text(
+            row.get("kieu_diem_ket_noi")
+        ):
             continue
         candidates.append((row, phases))
 
@@ -588,19 +661,22 @@ def playbook_get_terminal_class(
             "terminal_class_id": None, "voltage": None, "phases": [],
             "connection_specs": {"missing_data": ["unique_terminal_class", "voltage"]},
         }
+
     row, phases = candidates[0]
+    voltage = _to_number(row.get("dien_ap_v"))
     return {
         "terminal_class_id": row.get("ma_lop_dau_cuoi"),
-        "voltage": None,
+        "voltage": voltage,
         "phases": phases,
         "connection_specs": {
             "power_supply_type": row.get("kieu_cap_dien"),
             "connection_type": row.get("kieu_diem_ket_noi"),
             "circuit_group": row.get("nhom_mach"),
             "applicable_space": row.get("khong_gian_ap_dung"),
-            "voltage_drop_limit_percent": row.get("gioi_han_sut_ap_pct"),
+            "power_factor": _to_number(row.get("he_so_cong_suat_tam")),
+            "voltage_drop_limit_percent": _to_number(row.get("gioi_han_sut_ap_pct")),
             "notes": row.get("ghi_chu"),
             "source_status": row.get("tinh_trang_kiem_chung"),
-            "missing_data": ["voltage"] if row.get("dien_ap_v") is None else [],
+            "missing_data": [] if voltage is not None else ["voltage"],
         },
     }
