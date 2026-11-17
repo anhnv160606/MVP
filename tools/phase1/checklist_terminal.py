@@ -1,4 +1,5 @@
 """Bảng tick Phase 1 trên terminal, dùng cùng API với bản web."""
+
 import argparse
 import json
 import math
@@ -12,8 +13,12 @@ from uuid import uuid4
 from .questionnaire_get_template import choose
 
 REVISION_FIELDS = (
-    "template_id", "template_version", "template_revision", "model_revision",
-    "playbook_revision", "expected_revision",
+    "template_id",
+    "template_version",
+    "template_revision",
+    "model_revision",
+    "playbook_revision",
+    "expected_revision",
 )
 
 
@@ -54,7 +59,7 @@ def select_room(spaces, prompt, default=None):
 
 
 def room_label(room):
-    return f'{room["name"]} ({room["storey_name"] or "Chưa rõ tầng"})'
+    return f"{room['name']} ({room['storey_name'] or 'Chưa rõ tầng'})"
 
 
 def edit_room(template, design):
@@ -63,7 +68,9 @@ def edit_room(template, design):
     choice = next(room for room in design["rooms"] if room["space_id"] == space_id)
     options = template["room_device_options"].get(choice["room_type"], [])
     if "air_conditioners" in options:
-        choice["air_conditioners"] = choose("Số máy điều hòa", [(n, str(n)) for n in range(3)], choice["air_conditioners"])
+        choice["air_conditioners"] = choose(
+            "Số máy điều hòa", [(n, str(n)) for n in range(3)], choice["air_conditioners"]
+        )
     if "water_heater" in options:
         choice["water_heater"] = tick("Bình nước nóng", choice["water_heater"])
     if not options:
@@ -73,18 +80,26 @@ def edit_room(template, design):
 def edit_building(template, design):
     design["pump"] = tick("Máy bơm nước", design["pump"])
     design["shared_water_heaters_by_storey"] = tick(
-        "Các WC cùng tầng dùng chung một bình", design["shared_water_heaters_by_storey"],
+        "Các WC cùng tầng dùng chung một bình",
+        design["shared_water_heaters_by_storey"],
     )
     design["washing_machine_space_id"] = select_room(
-        template["spaces"], "Chọn phòng đặt máy giặt hoặc bỏ chọn", design["washing_machine_space_id"],
+        template["spaces"],
+        "Chọn phòng đặt máy giặt hoặc bỏ chọn",
+        design["washing_machine_space_id"],
     )
     spaces = {room["space_id"]: room for room in template["spaces"]}
     for kitchen in design["kitchens"]:
         print(room_label(spaces[kitchen["space_id"]]))
-        kitchen["stove"] = choose("Loại bếp", [("gas", "Bếp gas"), ("electric", "Bếp điện")], kitchen["stove"])
+        kitchen["stove"] = choose(
+            "Loại bếp", [("gas", "Bếp gas"), ("electric", "Bếp điện")], kitchen["stove"]
+        )
         if kitchen["stove"] == "electric":
-            kitchen["burners"] = choose("Số mặt bếp", [("single", "Bếp đơn"), ("double", "Bếp đôi")],
-                                        kitchen["burners"] or "double")
+            kitchen["burners"] = choose(
+                "Số mặt bếp",
+                [("single", "Bếp đơn"), ("double", "Bếp đôi")],
+                kitchen["burners"] or "double",
+            )
             kitchen["oven"] = tick("Lò nướng âm tủ", kitchen["oven"])
         else:
             kitchen.update(burners=None, oven=False)
@@ -93,7 +108,9 @@ def edit_building(template, design):
 
 def add_custom(call, template, design, pending):
     catalog = [item for item in template["catalog"] if item["source"]["kind"] == "user_declared"]
-    mode = choose("Thiết bị tùy chỉnh", [("new", "Thêm vào Playbook"), ("saved", "Chọn từ Playbook")])
+    mode = choose(
+        "Thiết bị tùy chỉnh", [("new", "Thêm vào Playbook"), ("saved", "Chọn từ Playbook")]
+    )
     if mode == "saved":
         if not catalog:
             print("Chưa có thiết bị tùy chỉnh trong Playbook.")
@@ -103,9 +120,11 @@ def add_custom(call, template, design, pending):
         name = input("Tên thiết bị: ").strip()
         if not name:
             raise ValueError("Tên thiết bị là bắt buộc.")
-        group = choose("Nhóm phụ tải", [(g, g["group_name"]) for g in template["load_groups"] if g["intent"]])
+        group = choose(
+            "Nhóm phụ tải", [(g, g["group_name"]) for g in template["load_groups"] if g["intent"]]
+        )
         power_range = group["reference_power_W"]
-        print(f'Công suất tham khảo min/max (W): {power_range["min"]} / {power_range["max"]}')
+        print(f"Công suất tham khảo min/max (W): {power_range['min']} / {power_range['max']}")
         watts = None
         if group["intent"] == "equipment":
             raw = input("Công suất thực tế (W), Enter nếu chưa biết: ").strip()
@@ -113,7 +132,12 @@ def add_custom(call, template, design, pending):
                 watts = float(raw.replace(",", "."))
                 if not math.isfinite(watts) or watts <= 0:
                     raise ValueError("Công suất thực tế phải là số hữu hạn lớn hơn 0.")
-        body = dict(name=name, group_name=group["group_name"], group_revision=group["group_revision"], input_W=watts)
+        body = dict(
+            name=name,
+            group_name=group["group_name"],
+            group_revision=group["group_revision"],
+            input_W=watts,
+        )
         key = tuple(body.values())
         request_id = pending.setdefault(key, str(uuid4()))
         response = call("/custom-devices", dict(body, request_id=request_id))
@@ -122,11 +146,15 @@ def add_custom(call, template, design, pending):
         template["playbook_revision"] = response["playbook_revision"]
         if not any(row["load_class_id"] == item["load_class_id"] for row in template["catalog"]):
             template["catalog"].append(item)
-        print(f'Đã lưu vào Playbook: {item["label"]} ({item["load_class_id"]})')
+        print(f"Đã lưu vào Playbook: {item['label']} ({item['load_class_id']})")
     room_id = select_room(template["spaces"], "Chọn phòng lắp đặt")
-    if not any(row["load_class_id"] == item["load_class_id"] and row["space_id"] == room_id
-               for row in design["custom_devices"]):
-        design["custom_devices"].append(dict(load_class_id=item["load_class_id"], space_id=room_id, quantity=1))
+    if not any(
+        row["load_class_id"] == item["load_class_id"] and row["space_id"] == room_id
+        for row in design["custom_devices"]
+    ):
+        design["custom_devices"].append(
+            dict(load_class_id=item["load_class_id"], space_id=room_id, quantity=1)
+        )
 
 
 def export_context(context, output_dir):
@@ -165,13 +193,20 @@ def run(call, output_dir=None):
             room["air_conditioners"] = 0
         if "water_heater" not in options:
             room["water_heater"] = False
-    print(f'Bảng tick · {template["project_id"]} · revision {template["expected_revision"]}')
+    print(f"Bảng tick · {template['project_id']} · revision {template['expected_revision']}")
     while True:
-        action = choose("\nThao tác", [
-            ("room", "Tick theo phòng"), ("building", "Bếp, máy bơm, máy giặt và bình dùng chung"),
-            ("custom", "Thêm / chọn thiết bị tùy chỉnh"), ("remove", "Bỏ chọn thiết bị tùy chỉnh"),
-            ("review", "Xem lựa chọn JSON"), ("save", "Lưu bảng hỏi và xuất JSON"), ("quit", "Thoát"),
-        ])
+        action = choose(
+            "\nThao tác",
+            [
+                ("room", "Tick theo phòng"),
+                ("building", "Bếp, máy bơm, máy giặt và bình dùng chung"),
+                ("custom", "Thêm / chọn thiết bị tùy chỉnh"),
+                ("remove", "Bỏ chọn thiết bị tùy chỉnh"),
+                ("review", "Xem lựa chọn JSON"),
+                ("save", "Lưu bảng hỏi và xuất JSON"),
+                ("quit", "Thoát"),
+            ],
+        )
         try:
             if action == "quit":
                 return
@@ -184,8 +219,13 @@ def run(call, output_dir=None):
             elif action == "remove" and design["custom_devices"]:
                 names = {item["load_class_id"]: item["label"] for item in template["catalog"]}
                 rooms = {room["space_id"]: room_label(room) for room in template["spaces"]}
-                choices = [(i, f'{names.get(row["load_class_id"], row["load_class_id"])} · {rooms.get(row["space_id"], "Chưa gán phòng")}')
-                           for i, row in enumerate(design["custom_devices"])]
+                choices = [
+                    (
+                        i,
+                        f"{names.get(row['load_class_id'], row['load_class_id'])} · {rooms.get(row['space_id'], 'Chưa gán phòng')}",
+                    )
+                    for i, row in enumerate(design["custom_devices"])
+                ]
                 design["custom_devices"].pop(choose("Bỏ chọn mục nào", choices))
             elif action == "review":
                 print(json.dumps(design, ensure_ascii=False, indent=2))
@@ -193,7 +233,7 @@ def run(call, output_dir=None):
                 body = {key: template[key] for key in REVISION_FIELDS}
                 result = call("/checklist-submit", dict(body, design_input=design))
                 template["expected_revision"] = result["questionnaire_revision"]
-                print(f'Đã lưu bảng hỏi · Phiên bản {result["questionnaire_revision"]}')
+                print(f"Đã lưu bảng hỏi · Phiên bản {result['questionnaire_revision']}")
                 try:
                     path = export_context(result["derived_load_context"], output_dir)
                 except OSError as error:
@@ -208,7 +248,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:8001")
     parser.add_argument("--project-id", default="checklist-demo")
-    parser.add_argument("--output-dir", type=Path, default=Path.cwd(), help="Thư mục lưu JSON (mặc định: thư mục hiện tại)")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path.cwd(),
+        help="Thư mục lưu JSON (mặc định: thư mục hiện tại)",
+    )
     args = parser.parse_args()
     try:
         run(api_client(args.url, args.project_id), args.output_dir.expanduser())

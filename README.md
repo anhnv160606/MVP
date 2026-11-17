@@ -1,5 +1,31 @@
 # MVP
 
+## Backend đặt thiết bị điện
+
+Đã có [frontend demo local](docs/frontend-demo.md). Khi chạy backend, mở
+**http://127.0.0.1:8000** để upload, nhập nhu cầu, theo dõi Agent và duyệt IFC.
+Muốn xem giao diện với dữ liệu mẫu khi chưa cấu hình Supabase/LLM:
+
+```powershell
+.venv\Scripts\python.exe -m electrical_design preview --port 8001
+```
+
+Mở **http://127.0.0.1:8001** và chọn **Xem dữ liệu mẫu**.
+
+Pipeline hiện nối upload IFC → bảng hỏi → Agent tự đề xuất → kiểm tra/lưu nháp
+→ kỹ sư duyệt → ghi IFC. Xem [hướng dẫn backend](docs/backend-pipeline.md),
+[danh sách tools](docs/tools_list.md) và [bàn giao phiên làm việc](session-handoff.md).
+
+```powershell
+uv sync --group dev --extra ifcmcp
+.venv\Scripts\python.exe -m uvicorn api.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Khai báo `LLM_PROVIDER`, `LLM_MODEL` và khóa tương ứng trong `.env`; áp dụng các
+migration Supabase trước khi chạy. Bật `ENABLE_IFCMCP=true` để mở tools đọc
+upstream. Chạy `.venv\Scripts\python.exe -m pytest -q` để kiểm thử độc lập,
+thêm `--live` để kiểm thử chỉ đọc Playbook trên Supabase.
+
 ## Phase 1 · Bảng hỏi thiết bị
 
 Cài thư viện từ thư mục gốc của repo bằng Python 3.12.

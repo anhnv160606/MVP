@@ -23,18 +23,36 @@ from ifc_engine import writer
 from tools.ifc_read import ifc_list_placed_devices
 from tools.validation import engine_validate_placements
 
-
 _REVISIONS = "phien_ban_phuong_an_bo_tri"
 _IFC_BUCKET = "ifc-files"
 _MAX_VERSION = 2**63 - 1
 _WRITE_LOCK = Lock()
+_CLIENT_CONTEXT = ContextVar("placement_storage_client", default=None)
 _TYPE_FIELDS = {
-    "ifc_class", "module_id", "geometry_ref", "dimensions_m", "specs", "rated_power", "rated_power_W",
-    "load_class_id", "terminal_class_id", "connection_specs", "voltage", "phases",
+    "ifc_class",
+    "module_id",
+    "geometry_ref",
+    "dimensions_m",
+    "specs",
+    "rated_power",
+    "rated_power_W",
+    "load_class_id",
+    "terminal_class_id",
+    "connection_specs",
+    "voltage",
+    "phases",
 }
 _EDITABLE_FIELDS = _TYPE_FIELDS | {
-    "device_type", "space_id", "host_id", "position", "orientation", "rule_ids", "properties", "reason",
-    "requirement_id", "requirement_unit",
+    "device_type",
+    "space_id",
+    "host_id",
+    "position",
+    "orientation",
+    "rule_ids",
+    "properties",
+    "reason",
+    "requirement_id",
+    "requirement_unit",
 }
 
 
@@ -62,7 +80,9 @@ class _ReviewContext:
     rules: dict
 
 
-_REVIEW_CONTEXT: ContextVar[_ReviewContext | None] = ContextVar("placement_review_context", default=None)
+_REVIEW_CONTEXT: ContextVar[_ReviewContext | None] = ContextVar(
+    "placement_review_context", default=None
+)
 
 
 def _uuid(value, field):
@@ -106,7 +126,10 @@ def placement_review_context(project_id, plan_id, version, *, rules=None):
     if rules is not None and not isinstance(rules, dict):
         raise PlacementError("rules phải là đối tượng JSON.")
     context = _ReviewContext(
-        _uuid(project_id, "project_id"), _uuid(plan_id, "plan_id"), _version(version), _json_copy(rules or {}),
+        _uuid(project_id, "project_id"),
+        _uuid(plan_id, "plan_id"),
+        _version(version),
+        _json_copy(rules or {}),
     )
     token = _REVIEW_CONTEXT.set(context)
     try:
@@ -116,7 +139,17 @@ def placement_review_context(project_id, plan_id, version, *, rules=None):
 
 
 def _client():
-    return get_supabase_client(Settings())
+    return _CLIENT_CONTEXT.get() or get_supabase_client(Settings())
+
+
+@contextmanager
+def placement_storage_context(client):
+    """Bind the backend client independently of LLM arguments and global settings."""
+    token = _CLIENT_CONTEXT.set(client)
+    try:
+        yield
+    finally:
+        _CLIENT_CONTEXT.reset(token)
 
 
 @contextmanager
@@ -125,12 +158,16 @@ def _supabase_request(action):
         yield
     except APIError as error:
         if error.code in {"42P01", "PGRST205"}:
-            raise PlacementDatabaseError(f"{action}: kiểm tra bảng đã được tạo và mở qua Data API.") from error
+            raise PlacementDatabaseError(
+                f"{action}: kiểm tra bảng đã được tạo và mở qua Data API."
+            ) from error
         if error.code == "42501":
             raise PlacementDatabaseError(f"{action}: backend thiếu quyền Supabase.") from error
         raise PlacementDatabaseError(f"{action}: yêu cầu Data API thất bại.") from error
     except (HTTPError, StorageException) as error:
-        raise PlacementDatabaseError(f"{action}: không hoàn thành được yêu cầu Supabase.") from error
+        raise PlacementDatabaseError(
+            f"{action}: không hoàn thành được yêu cầu Supabase."
+        ) from error
 
 
 def _prepare_proposals(proposals, plan_id, previous=()):
@@ -151,7 +188,10 @@ def _prepare_proposals(proposals, plan_id, previous=()):
             raise PlacementError(f"proposed_id bị trùng: {proposed_id}.")
         seen_proposals.add(proposed_id)
         device_id = previous_ids.get(proposed_id) or str(uuid5(UUID(plan_id), proposed_id))
-        if proposal.get("device_id") is not None and _uuid(proposal["device_id"], "device_id") != device_id:
+        if (
+            proposal.get("device_id") is not None
+            and _uuid(proposal["device_id"], "device_id") != device_id
+        ):
             raise PlacementError(f"device_id không khớp với thiết bị đề xuất {proposed_id}.")
         if device_id in seen_devices:
             raise PlacementError(f"device_id bị trùng: {device_id}.")
@@ -200,7 +240,9 @@ def _placement_diff(previous, current):
 
 def _plan_row(client, project_id, plan_id, version=None):
     with _supabase_request("Đọc phiên bản phương án"):
-        query = client.table(_REVISIONS).select("*").eq("project_id", project_id).eq("plan_id", plan_id)
+        query = (
+            client.table(_REVISIONS).select("*").eq("project_id", project_id).eq("plan_id", plan_id)
+        )
         if version is None:
             query = query.order("version", desc=True)
         else:
@@ -218,10 +260,23 @@ def _require_plan(client, project_id, plan_id, version=None):
 
 def _check_version(row, expected):
     if row["version"] != expected:
-        raise PlacementConflict(f"Bạn đang xem phiên bản {expected}, phiên bản mới nhất là {row['version']}.")
+        raise PlacementConflict(
+            f"Bạn đang xem phiên bản {expected}, phiên bản mới nhất là {row['version']}."
+        )
 
 
-def _save_revision(client, project_id, plan_id, version, source_file_id, previous, proposals, validation, *, removal=None):
+def _save_revision(
+    client,
+    project_id,
+    plan_id,
+    version,
+    source_file_id,
+    previous,
+    proposals,
+    validation,
+    *,
+    removal=None,
+):
     _version(version)
     diff = _placement_diff(previous, proposals)
     values = {
@@ -240,17 +295,27 @@ def _save_revision(client, project_id, plan_id, version, source_file_id, previou
                 client.table(_REVISIONS).insert(values).execute()
             except APIError as error:
                 if error.code == "23505":
-                    raise PlacementConflict("Phiên bản đã được lưu bởi thao tác khác. Hãy tải lại phương án.") from error
+                    raise PlacementConflict(
+                        "Phiên bản đã được lưu bởi thao tác khác. Hãy tải lại phương án."
+                    ) from error
                 raise
-    return {"plan_id": plan_id, "version": version, "status": "pending_review", "diff_summary": diff}
+    return {
+        "plan_id": plan_id,
+        "version": version,
+        "status": "pending_review",
+        "diff_summary": diff,
+    }
 
 
 def _applied_row(client, project_id, plan_id=None):
     columns = "output_file_id" if plan_id is None else "proposals"
     with _supabase_request("Đọc phiên bản IFC đã áp dụng"):
         query = (
-            client.table(_REVISIONS).select(columns).eq("project_id", project_id)
-            .eq("review_status", "approved").filter("applied_at", "not.is", "null")
+            client.table(_REVISIONS)
+            .select(columns)
+            .eq("project_id", project_id)
+            .eq("review_status", "approved")
+            .filter("applied_at", "not.is", "null")
         )
         if plan_id is None:
             query = query.order("applied_at", desc=True).order("id", desc=True)
@@ -281,11 +346,19 @@ def _current_file(client, project_id, initial_file_id=None):
         return _ready_file(client, project_id, initial_file_id, "architecture")
     with _supabase_request("Tìm IFC kiến trúc của dự án"):
         rows = (
-            client.table("project_files").select("*").eq("project_id", project_id)
-            .eq("file_kind", "architecture").eq("status", "ready").limit(2).execute().data
+            client.table("project_files")
+            .select("*")
+            .eq("project_id", project_id)
+            .eq("file_kind", "architecture")
+            .eq("status", "ready")
+            .limit(2)
+            .execute()
+            .data
         )
     if len(rows) != 1:
-        raise PlacementError("Cần source_file_id khi dự án chưa có đúng một IFC kiến trúc ở trạng thái ready.")
+        raise PlacementError(
+            "Cần source_file_id khi dự án chưa có đúng một IFC kiến trúc ở trạng thái ready."
+        )
     return rows[0]
 
 
@@ -311,8 +384,13 @@ def _digest(path):
 
 # Tool 10 - draft_save_placements: Lưu bản nháp bố trí thiết bị theo phiên bản.
 def draft_save_placements(
-    project_id: str, proposals: list[dict], validation_result: dict, *,
-    plan_id: str | None = None, expected_version: int | None = None, source_file_id: str | None = None,
+    project_id: str,
+    proposals: list[dict],
+    validation_result: dict,
+    *,
+    plan_id: str | None = None,
+    expected_version: int | None = None,
+    source_file_id: str | None = None,
 ) -> dict:
     """Lưu phương án bố trí điện thành phiên bản nháp chờ duyệt.
 
@@ -350,13 +428,17 @@ def draft_save_placements(
         previous = row["proposals"]
         source_file_id = source_file_id or row["output_file_id"] or row["source_file_id"]
     proposals = _prepare_proposals(proposals, plan_id, previous)
-    return _save_revision(client, project_id, plan_id, version, source_file_id, previous, proposals, validation)
+    return _save_revision(
+        client, project_id, plan_id, version, source_file_id, previous, proposals, validation
+    )
 
 
 def get_placement_plan(project_id, plan_id, version=None):
     """Đọc phiên bản phương án để hiển thị trong màn hình duyệt."""
     row = _plan_row(
-        _client(), _uuid(project_id, "project_id"), _uuid(plan_id, "plan_id"),
+        _client(),
+        _uuid(project_id, "project_id"),
+        _uuid(plan_id, "plan_id"),
         None if version is None else _version(version),
     )
     return {**row, "status": row["review_status"]} if row is not None else None
@@ -369,16 +451,22 @@ def get_placement_removal(project_id, plan_id, version):
         return None
     details = row["removal_details"]
     return {
-        **details, "project_id": row["project_id"], "plan_id": row["plan_id"],
-        "version": row["version"], "created_at": row["created_at"],
+        **details,
+        "project_id": row["project_id"],
+        "plan_id": row["plan_id"],
+        "version": row["version"],
+        "created_at": row["created_at"],
     }
 
 
 def _revision_update(client, row, values):
     return (
-        client.table(_REVISIONS).update(values)
-        .eq("id", row["id"]).eq("project_id", row["project_id"])
-        .eq("plan_id", row["plan_id"]).eq("version", row["version"])
+        client.table(_REVISIONS)
+        .update(values)
+        .eq("id", row["id"])
+        .eq("project_id", row["project_id"])
+        .eq("plan_id", row["plan_id"])
+        .eq("version", row["version"])
         .eq("review_status", row["review_status"])
     )
 
@@ -400,15 +488,28 @@ def approve_placement_plan(project_id, plan_id, version, *, reviewer_id):
         if row["review_status"] != "pending_review":
             raise PlacementConflict("Phiên bản này đã có quyết định duyệt.")
         _require_current_file(client, project_id, row["source_file_id"])
-        values = {"review_status": "approved", "reviewed_by": reviewer_id, "reviewed_at": datetime.now(UTC).isoformat()}
+        validation = _validate_saved_plan(client, row)
+        if not validation["valid"]:
+            raise PlacementError("Phương án không đạt kiểm tra lại trên IFC hiện hành.")
+        values = {
+            "review_status": "approved",
+            "reviewed_by": reviewer_id,
+            "reviewed_at": datetime.now(UTC).isoformat(),
+        }
+        values["validation_result"] = validation
         with _supabase_request("Ghi quyết định duyệt"):
             updated = _revision_update(client, row, values).execute().data
-        if not updated and _require_plan(client, project_id, plan_id, version)["review_status"] != "approved":
+        if (
+            not updated
+            and _require_plan(client, project_id, plan_id, version)["review_status"] != "approved"
+        ):
             raise PlacementConflict("Trạng thái duyệt đã thay đổi.")
 
 
 def _specs(project_id, plan_id, proposals):
-    return {item["proposed_id"]: writer.device_spec(project_id, plan_id, item) for item in proposals}
+    return {
+        item["proposed_id"]: writer.device_spec(project_id, plan_id, item) for item in proposals
+    }
 
 
 def _upload_electrical(client, project_id, path, directory):
@@ -417,11 +518,20 @@ def _upload_electrical(client, project_id, path, directory):
     size = path.stat().st_size
     checksum = _digest(path)
     with _supabase_request("Tạo bản ghi IFC điện"):
-        file = create_file_record(client, {
-            "project_id": project_id, "file_kind": "electrical", "original_name": filename,
-            "bucket": _IFC_BUCKET, "object_path": object_path, "size_bytes": size,
-            "sha256": checksum, "ifc_schema": "IFC4", "status": "pending",
-        })
+        file = create_file_record(
+            client,
+            {
+                "project_id": project_id,
+                "file_kind": "electrical",
+                "original_name": filename,
+                "bucket": _IFC_BUCKET,
+                "object_path": object_path,
+                "size_bytes": size,
+                "sha256": checksum,
+                "ifc_schema": "IFC4",
+                "status": "pending",
+            },
+        )
 
     readback = directory / "uploaded.ifc"
     try:
@@ -445,8 +555,12 @@ def _upload_electrical(client, project_id, path, directory):
 
 def _batch_result(status, model_version=None, *, created=(), updated=(), removed=(), errors=()):
     return {
-        "status": status, "created_ids": list(created), "updated_ids": list(updated),
-        "removed_ids": list(removed), "errors": list(errors), "model_version": model_version,
+        "status": status,
+        "created_ids": list(created),
+        "updated_ids": list(updated),
+        "removed_ids": list(removed),
+        "errors": list(errors),
+        "model_version": model_version,
     }
 
 
@@ -491,6 +605,8 @@ def _apply_approved_revision(client, project_id, plan_id, version):
         raise PlacementError("Phiên bản phải đạt kiểm tra và được kỹ sư duyệt trước khi ghi IFC.")
 
     source = _require_current_file(client, project_id, row["source_file_id"])
+    if not _validate_saved_plan(client, row)["valid"]:
+        raise PlacementError("Phương án không đạt kiểm tra lại trước khi ghi IFC.")
     applied = _applied_row(client, project_id, plan_id)
     previous = applied["proposals"] if applied is not None else []
     proposals = row["proposals"]
@@ -524,23 +640,44 @@ def _apply_approved_revision(client, project_id, plan_id, version):
     _require_current_file(client, project_id, source["id"])
     values = {"output_file_id": file_id, "applied_at": datetime.now(UTC).isoformat()}
     with _supabase_request("Ghi nhận phiên bản IFC đã áp dụng"):
-        updated_rows = _revision_update(client, row, values).is_("output_file_id", "null").execute().data
+        updated_rows = (
+            _revision_update(client, row, values).is_("output_file_id", "null").execute().data
+        )
     if not updated_rows:
         recorded = _require_plan(client, project_id, plan_id, version)
         if recorded["output_file_id"] is not None:
             return _replay_result(client, recorded)
         raise PlacementConflict("Trạng thái phiên bản đã đổi trước khi ghi nhận IFC.")
     return _batch_result(
-        "applied", file_id,
+        "applied",
+        file_id,
         created=(current[key].guid for key in diff["added"]),
         updated=(current[key].guid for key in diff["updated"]),
         removed=(spec.guid for spec in removed),
     )
 
 
+def _validate_saved_plan(client, row):
+    """Never trust a validation result supplied by an LLM or external caller."""
+    source = _require_current_file(client, row["project_id"], row["source_file_id"])
+    applied = _applied_row(client, row["project_id"], row["plan_id"])
+    previous = applied["proposals"] if applied else []
+    managed = {spec.guid for spec in _specs(row["project_id"], row["plan_id"], previous).values()}
+    with TemporaryDirectory(prefix="mvp-validation-") as location:
+        path = Path(location) / "source.ifc"
+        model = _download_model(client, source, path)
+        for spec in _specs(row["project_id"], row["plan_id"], row["proposals"]).values():
+            writer.resolve_device_mount(model, spec)
+        return _run_validator(row["proposals"], path, {}, managed, removing=bool(previous))
+
+
 def _merge_device(device, changes):
     updated = dict(device)
-    if any(changes[key] != device.get(key) for key in ("device_type", "ifc_class", "module_id") if key in changes):
+    if any(
+        changes[key] != device.get(key)
+        for key in ("device_type", "ifc_class", "module_id")
+        if key in changes
+    ):
         stale_fields = _TYPE_FIELDS | {"rule_ids"}
         if "device_type" not in changes and "ifc_class" not in changes:
             stale_fields = stale_fields - {"ifc_class"}
@@ -566,12 +703,22 @@ def _merge_device(device, changes):
 def _run_validator(proposals, path, rules, managed_guids, *, removing):
     try:
         # Các thiết bị của cùng phương án đã có trong danh sách đề xuất.
-        existing = [item for item in ifc_list_placed_devices(path) if item["element_id"] not in managed_guids]
+        existing = [
+            item
+            for item in ifc_list_placed_devices(path)
+            if item["element_id"] not in managed_guids
+        ]
         result = engine_validate_placements(proposals, {"existing_devices": existing}, rules, path)
         _validate_result(result)
         result = _json_copy(result)
-        if removing and not proposals and result["errors"] and all(
-            isinstance(error, dict) and error.get("code") == "ERR_EMPTY_PROPOSALS" for error in result["errors"]
+        if (
+            removing
+            and not proposals
+            and result["errors"]
+            and all(
+                isinstance(error, dict) and error.get("code") == "ERR_EMPTY_PROPOSALS"
+                for error in result["errors"]
+            )
         ):
             # Danh sách rỗng là kết quả hợp lệ khi người dùng chủ động xóa thiết bị cuối.
             result["errors"] = []
@@ -629,7 +776,11 @@ def _stage_device_change(context, device_id, *, changes=None, reason=None):
         if updated is not None:
             writer.resolve_device_mount(model, writer.device_spec(project_id, plan_id, updated))
         validation = _run_validator(
-            candidate, path, context.rules, {spec.guid for spec in applied_specs.values()}, removing=reason is not None,
+            candidate,
+            path,
+            context.rules,
+            {spec.guid for spec in applied_specs.values()},
+            removing=reason is not None,
         )
 
     if not validation["valid"]:
@@ -643,11 +794,21 @@ def _stage_device_change(context, device_id, *, changes=None, reason=None):
     removal = None
     if reason is not None:
         removal = {
-            "device_id": device_id, "proposed_id": proposed_id, "reason": reason,
+            "device_id": device_id,
+            "proposed_id": proposed_id,
+            "reason": reason,
             "affected_references": references,
         }
     saved = _save_revision(
-        client, project_id, plan_id, version + 1, source["id"], previous, candidate, validation, removal=removal,
+        client,
+        project_id,
+        plan_id,
+        version + 1,
+        source["id"],
+        previous,
+        candidate,
+        validation,
+        removal=removal,
     )
     return saved["status"], updated, validation, references, saved["version"]
 
@@ -679,25 +840,37 @@ def ifc_modify_device(device_id: str, changes: dict) -> dict:
         if not isinstance(changes, dict) or not changes or changes.keys() - _EDITABLE_FIELDS:
             raise PlacementError("changes phải chứa các trường thiết bị được phép chỉnh sửa.")
         status, updated, validation, _, version = _stage_device_change(
-            context, device_id, changes=_json_copy(changes),
+            context,
+            device_id,
+            changes=_json_copy(changes),
         )
         if status == "blocked":
             validation = {
-                "valid": False, "errors": [{
-                    "code": "blocked", "message": "Thiết bị còn tham chiếu IFC bên ngoài phương án.",
-                }],
-                "warnings": [], "suggested_fixes": [],
+                "valid": False,
+                "errors": [
+                    {
+                        "code": "blocked",
+                        "message": "Thiết bị còn tham chiếu IFC bên ngoài phương án.",
+                    }
+                ],
+                "warnings": [],
+                "suggested_fixes": [],
             }
     except (ValueError, TypeError, OSError, RuntimeError, OverflowError) as error:
         status = _edit_failure_status(error)
         validation = {
-            "valid": False, "errors": [{"code": status, "message": str(error)}],
-            "warnings": [], "suggested_fixes": [],
+            "valid": False,
+            "errors": [{"code": status, "message": str(error)}],
+            "warnings": [],
+            "suggested_fixes": [],
         }
         updated, version = None, None
     return {
-        "status": status, "updated_device": updated, "validation_result": validation,
-        "plan_id": context.plan_id if context else None, "version": version,
+        "status": status,
+        "updated_device": updated,
+        "validation_result": validation,
+        "plan_id": context.plan_id if context else None,
+        "version": version,
     }
 
 
@@ -721,15 +894,24 @@ def ifc_remove_device(device_id: str, reason: str) -> dict:
         device_id = _uuid(device_id, "device_id")
         if not isinstance(reason, str) or not reason.strip() or "\0" in reason:
             raise PlacementError("reason phải là lý do xóa hợp lệ.")
-        status, _, validation, references, version = _stage_device_change(context, device_id, reason=reason.strip())
+        status, _, validation, references, version = _stage_device_change(
+            context, device_id, reason=reason.strip()
+        )
         if status == "pending_review":
             removed_id = device_id
         if status == "blocked":
-            errors = ["Thiết bị còn tham chiếu IFC bên ngoài phương án. Cần xử lý tham chiếu trước khi xóa."]
+            errors = [
+                "Thiết bị còn tham chiếu IFC bên ngoài phương án. Cần xử lý tham chiếu trước khi xóa."
+            ]
     except (ValueError, TypeError, OSError, RuntimeError, OverflowError) as error:
         status = _edit_failure_status(error)
         errors = [str(error)]
     return {
-        "status": status, "removed_id": removed_id, "affected_references": references, "errors": errors,
-        "plan_id": context.plan_id if context else None, "version": version, "validation_result": validation,
+        "status": status,
+        "removed_id": removed_id,
+        "affected_references": references,
+        "errors": errors,
+        "plan_id": context.plan_id if context else None,
+        "version": version,
+        "validation_result": validation,
     }

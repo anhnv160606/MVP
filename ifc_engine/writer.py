@@ -47,11 +47,18 @@ _DEFAULT_DIMENSIONS = {
 
 def open_model(path):
     """Mở mô hình IFC4 có một IfcProject và đơn vị độ dài hợp lệ."""
-    model = ifcopenshell.open(str(path))
+    try:
+        model = ifcopenshell.open(str(path))
+    except (ifcopenshell.Error, RuntimeError) as error:
+        raise IfcWriteError("Không đọc được tệp IFC hợp lệ.") from error
     if model.schema != "IFC4" or len(model.by_type("IfcProject")) != 1:
         raise IfcWriteError("Cần tệp IFC4 có đúng một IfcProject.")
     units = model.by_type("IfcProject")[0].UnitsInContext
-    length_units = [unit for unit in units.Units if getattr(unit, "UnitType", None) == "LENGTHUNIT"] if units else []
+    length_units = (
+        [unit for unit in units.Units if getattr(unit, "UnitType", None) == "LENGTHUNIT"]
+        if units
+        else []
+    )
     if len(length_units) != 1:
         raise IfcWriteError("IfcProject phải khai báo đúng một đơn vị độ dài.")
     scale = ifcopenshell.util.unit.calculate_unit_scale(model)
@@ -132,7 +139,7 @@ class DeviceSpec:
 def device_spec(project_id, plan_id, proposal):
     """Chuyển đề xuất thành thông số ghi IFC, dùng mét và yaw theo độ."""
     device_type = proposal["device_type"]
-    ifc_class = proposal.get("ifc_class", _DEVICE_CLASSES.get(device_type, device_type))
+    ifc_class = proposal.get("ifc_class") or _DEVICE_CLASSES.get(device_type, device_type)
     if not isinstance(ifc_class, str) or ifc_class not in _DEFAULT_DIMENSIONS:
         raise IfcWriteError(f"Chưa hỗ trợ lớp IFC cho thiết bị {device_type!r}.")
     module_id = proposal.get("module_id")
@@ -151,7 +158,13 @@ def device_spec(project_id, plan_id, proposal):
     return DeviceSpec(
         guid=device_guid(project_id, plan_id, proposal["proposed_id"]),
         ifc_class=ifc_class,
-        type_guid=_guid("placement-type", project_id, ifc_class, "catalog" if module_id else "generic", type_name),
+        type_guid=_guid(
+            "placement-type",
+            project_id,
+            ifc_class,
+            "catalog" if module_id else "generic",
+            type_name,
+        ),
         type_name=type_name,
         space_id=proposal["space_id"],
         host_id=proposal.get("host_id"),
@@ -170,7 +183,11 @@ def _body_context(model):
     if context is None:
         context = ifcopenshell.api.context.add_context(model, context_type="Model")
     return ifcopenshell.api.context.add_context(
-        model, context_type="Model", context_identifier="Body", target_view="MODEL_VIEW", parent=context,
+        model,
+        context_type="Model",
+        context_identifier="Body",
+        target_view="MODEL_VIEW",
+        parent=context,
     )
 
 
@@ -192,21 +209,34 @@ def create_device(model, spec):
         raise IfcWriteError("GlobalId của quan hệ gắn thiết bị đã tồn tại.")
     device_type = _by_guid(model, spec.type_guid)
     if device_type is None:
-        device_type = ifcopenshell.api.root.create_entity(model, ifc_class=spec.type_class, name=spec.type_name)
+        device_type = ifcopenshell.api.root.create_entity(
+            model, ifc_class=spec.type_class, name=spec.type_name
+        )
         device_type.GlobalId = spec.type_guid
     elif device_type.is_a() != spec.type_class or device_type.Name != spec.type_name:
         raise IfcWriteError(f"IFC type hiện có không khớp với {spec.type_name!r}.")
 
-    device = ifcopenshell.api.root.create_entity(model, ifc_class=spec.ifc_class, name=spec.type_name)
+    device = ifcopenshell.api.root.create_entity(
+        model, ifc_class=spec.ifc_class, name=spec.type_name
+    )
     device.GlobalId = spec.guid
     ifcopenshell.api.type.assign_type(
-        model, related_objects=[device], relating_type=device_type, should_map_representations=False,
+        model,
+        related_objects=[device],
+        relating_type=device_type,
+        should_map_representations=False,
     )
     ifcopenshell.api.spatial.assign_container(model, products=[device], relating_structure=space)
-    ifcopenshell.api.geometry.edit_object_placement(model, product=device, matrix=spec.matrix(), is_si=True)
+    ifcopenshell.api.geometry.edit_object_placement(
+        model, product=device, matrix=spec.matrix(), is_si=True
+    )
     x, y, z = spec.dimensions
     body = ifcopenshell.api.geometry.add_wall_representation(
-        model, context=_body_context(model), length=x, thickness=y, height=z,
+        model,
+        context=_body_context(model),
+        length=x,
+        thickness=y,
+        height=z,
     )
     ifcopenshell.api.geometry.assign_representation(model, product=device, representation=body)
     pset = ifcopenshell.api.pset.add_pset(model, product=device, name=_PSET)
@@ -222,12 +252,17 @@ def create_device(model, spec):
     if spec.host_id is not None:
         properties["HostGlobalId"] = spec.host_id
     ifcopenshell.api.pset.edit_pset(
-        model, pset=pset,
-        properties={name: model.create_entity("IfcText", value) for name, value in properties.items()},
+        model,
+        pset=pset,
+        properties={
+            name: model.create_entity("IfcText", value) for name, value in properties.items()
+        },
     )
     if host is not None:
         relation = ifcopenshell.api.root.create_entity(
-            model, ifc_class="IfcRelConnectsElements", name="MVP placement host",
+            model,
+            ifc_class="IfcRelConnectsElements",
+            name="MVP placement host",
         )
         relation.GlobalId = spec.host_relation_guid
         relation.RelatingElement = host
@@ -245,7 +280,9 @@ def _device_properties(model, proposal):
         if isinstance(value, str):
             value = model.create_entity("IfcText", value)
         elif isinstance(value, (dict, list)):
-            value = model.create_entity("IfcText", json.dumps(value, sort_keys=True, allow_nan=False))
+            value = model.create_entity(
+                "IfcText", json.dumps(value, sort_keys=True, allow_nan=False)
+            )
         elif value is None:
             continue
         elif type(value) is bool:
@@ -259,12 +296,16 @@ def _device_properties(model, proposal):
 
 
 def _verify_body(device, spec, unit_scale):
-    body = ifcopenshell.util.representation.get_representation(device, "Model", "Body", "MODEL_VIEW")
+    body = ifcopenshell.util.representation.get_representation(
+        device, "Model", "Body", "MODEL_VIEW"
+    )
     if body is None or len(body.Items) != 1 or not body.Items[0].is_a("IfcExtrudedAreaSolid"):
         raise IfcWriteError(f"Thiết bị {spec.guid} thiếu hình học IFC hợp lệ.")
     solid = body.Items[0]
     profile = solid.SweptArea
-    if not profile.is_a("IfcArbitraryClosedProfileDef") or not profile.OuterCurve.is_a("IfcIndexedPolyCurve"):
+    if not profile.is_a("IfcArbitraryClosedProfileDef") or not profile.OuterCurve.is_a(
+        "IfcIndexedPolyCurve"
+    ):
         raise IfcWriteError(f"Biên dạng hình học của thiết bị {spec.guid} không hợp lệ.")
     x, y = np.ptp(profile.OuterCurve.Points.CoordList, axis=0)
     dimensions = np.array([x, y, solid.Depth]) * unit_scale
@@ -281,22 +322,31 @@ def verify_device(model, spec):
     device_type = ifcopenshell.util.element.get_type(device)
     host_link = _by_guid(model, spec.host_relation_guid)
     if (
-        device.is_a() != spec.ifc_class or pset.get("Proposal") != spec.payload
-        or pset.get("ProposedId") != proposal["proposed_id"] or pset.get("DeviceId") != proposal.get("device_id")
+        device.is_a() != spec.ifc_class
+        or pset.get("Proposal") != spec.payload
+        or pset.get("ProposedId") != proposal["proposed_id"]
+        or pset.get("DeviceId") != proposal.get("device_id")
         or pset.get("DeviceType") != proposal["device_type"]
-        or pset.get("SpaceGlobalId") != spec.space_id or pset.get("HostGlobalId") != spec.host_id
-        or container is None or container.GlobalId != spec.space_id
-        or device_type is None or device_type.GlobalId != spec.type_guid
-        or device_type.is_a() != spec.type_class or device_type.Name != spec.type_name
-        or device.ObjectPlacement is None or not device.ObjectPlacement.is_a("IfcLocalPlacement")
+        or pset.get("SpaceGlobalId") != spec.space_id
+        or pset.get("HostGlobalId") != spec.host_id
+        or container is None
+        or container.GlobalId != spec.space_id
+        or device_type is None
+        or device_type.GlobalId != spec.type_guid
+        or device_type.is_a() != spec.type_class
+        or device_type.Name != spec.type_name
+        or device.ObjectPlacement is None
+        or not device.ObjectPlacement.is_a("IfcLocalPlacement")
     ):
         raise IfcWriteError(f"Thông tin IFC của thiết bị {spec.guid} không khớp.")
     if spec.host_id is None:
         valid_host = host_link is None
     else:
         valid_host = (
-            host_link is not None and host_link.is_a("IfcRelConnectsElements")
-            and host_link.RelatingElement.GlobalId == spec.host_id and host_link.RelatedElement == device
+            host_link is not None
+            and host_link.is_a("IfcRelConnectsElements")
+            and host_link.RelatingElement.GlobalId == spec.host_id
+            and host_link.RelatedElement == device
         )
     matrix = ifcopenshell.util.placement.get_local_placement(device.ObjectPlacement)
     unit_scale = ifcopenshell.util.unit.calculate_unit_scale(model)
@@ -305,13 +355,20 @@ def verify_device(model, spec):
         raise IfcWriteError(f"Vị trí, hướng hoặc phần tử gắn của thiết bị {spec.guid} không khớp.")
     _verify_body(device, spec, unit_scale)
     expected_properties = _device_properties(model, proposal)
-    properties = ifcopenshell.util.element.get_pset(device, _PROPERTIES_PSET, should_inherit=False) or {}
+    properties = (
+        ifcopenshell.util.element.get_pset(device, _PROPERTIES_PSET, should_inherit=False) or {}
+    )
     property_set_id = properties.pop("id", None)
     # Đọc trực tiếp thuộc tính vì get_pset dùng khóa "id" để trả mã của tập thuộc tính.
     property_set = model.by_id(property_set_id) if property_set_id is not None else None
-    actual = {prop.Name: prop.NominalValue for prop in property_set.HasProperties} if property_set else {}
+    actual = (
+        {prop.Name: prop.NominalValue for prop in property_set.HasProperties}
+        if property_set
+        else {}
+    )
     if actual.keys() != expected_properties.keys() or any(
-        value is None or value.is_a() != expected_properties[key].is_a()
+        value is None
+        or value.is_a() != expected_properties[key].is_a()
         or value.wrappedValue != expected_properties[key].wrappedValue
         for key, value in actual.items()
     ):
@@ -326,8 +383,10 @@ def _inspect_removal(model, spec):
     for reference in references:
         if (
             reference.is_a() in {"IfcRelDefinesByType", "IfcRelContainedInSpatialStructure"}
-            or (reference.is_a("IfcRelDefinesByProperties")
-                and reference.RelatingPropertyDefinition in (pset, property_set))
+            or (
+                reference.is_a("IfcRelDefinesByProperties")
+                and reference.RelatingPropertyDefinition in (pset, property_set)
+            )
             or reference == host_link
         ):
             managed.add(reference)
@@ -335,7 +394,8 @@ def _inspect_removal(model, spec):
     references.update(device.ObjectPlacement.ReferencedByPlacements)
     affected = [
         {
-            "ifc_class": reference.is_a(), "step_id": reference.id(),
+            "ifc_class": reference.is_a(),
+            "step_id": reference.id(),
             "global_id": getattr(reference, "GlobalId", None),
             "blocks_removal": reference not in managed,
         }
@@ -367,5 +427,8 @@ def verify_batch(model, current, removed):
     for spec in current.values():
         verify_device(model, spec)
     for spec in removed:
-        if _by_guid(model, spec.guid) is not None or _by_guid(model, spec.host_relation_guid) is not None:
+        if (
+            _by_guid(model, spec.guid) is not None
+            or _by_guid(model, spec.host_relation_guid) is not None
+        ):
             raise IfcWriteError(f"Thiết bị đã xóa {spec.guid} hoặc quan hệ gắn vẫn còn trong IFC.")

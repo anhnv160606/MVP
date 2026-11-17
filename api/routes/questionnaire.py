@@ -6,13 +6,16 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, ConfigDict
 from postgrest.exceptions import APIError
+from pydantic import BaseModel, ConfigDict
 
 from config.settings import Settings
 from database.supabase_client import get_supabase_client
 from ifc_engine.reader import SpatialIndex, read_spaces
-
+from tools.phase1.questionnaire_get_load_context import (
+    QuestionnaireLookupError,
+    questionnaire_get_load_context,
+)
 from tools.phase1.questionnaire_get_template import (
     BUILDING_TYPE,
     CustomDeviceInput,
@@ -28,10 +31,6 @@ from tools.phase1.questionnaire_submit import (
     QuestionnaireRevisionConflict,
     QuestionnaireStore,
     questionnaire_submit,
-)
-from tools.phase1.questionnaire_get_load_context import (
-    QuestionnaireLookupError,
-    questionnaire_get_load_context,
 )
 
 
@@ -49,17 +48,23 @@ def _call_tool(tool, *args, **kwargs):
     try:
         return tool(*args, **kwargs)
     except QuestionnaireRevisionConflict as error:
-        raise HTTPException(409, {
-            "code": "QUESTIONNAIRE_REVISION_CONFLICT",
-            "current_revision": error.current_revision,
-            "message": str(error),
-        }) from error
+        raise HTTPException(
+            409,
+            {
+                "code": "QUESTIONNAIRE_REVISION_CONFLICT",
+                "current_revision": error.current_revision,
+                "message": str(error),
+            },
+        ) from error
     except QuestionnaireModelConflict as error:
-        raise HTTPException(409, {
-            "code": "MODEL_REVISION_CONFLICT",
-            "current_model_revision": error.current_model_revision,
-            "message": str(error),
-        }) from error
+        raise HTTPException(
+            409,
+            {
+                "code": "MODEL_REVISION_CONFLICT",
+                "current_model_revision": error.current_model_revision,
+                "message": str(error),
+            },
+        ) from error
     except QuestionnaireLookupError as error:
         raise HTTPException(404, str(error)) from error
     except CustomDeviceConflict as error:
@@ -566,16 +571,25 @@ def create_questionnaire_router(
     def get_checklist(project_id: str):
         model = require_project_model(project_id)
         return _call_tool(
-            questionnaire_get_template, project_id, BUILDING_TYPE, model.revision,
-            model=model, catalog=catalog(project_id), store=store,
+            questionnaire_get_template,
+            project_id,
+            BUILDING_TYPE,
+            model.revision,
+            model=model,
+            catalog=catalog(project_id),
+            store=store,
         )
 
     @router.post("/checklist-submit")
     def submit_checklist(project_id: str, submission: FormSubmission):
         model = require_project_model(project_id)
         return _call_tool(
-            questionnaire_submit, project_id, submission=submission,
-            model=model, catalog=catalog(project_id), store=store,
+            questionnaire_submit,
+            project_id,
+            submission=submission,
+            model=model,
+            catalog=catalog(project_id),
+            store=store,
         )
 
     @router.get("/load-groups")
@@ -590,25 +604,36 @@ def create_questionnaire_router(
         if playbook_store is None:
             raise HTTPException(503, "Checklist Playbook is not configured")
         current = catalog(project_id)
-        item = _call_tool(playbook_store.create_custom_device, project_id, **device.model_dump(), catalog=current)
+        item = _call_tool(
+            playbook_store.create_custom_device, project_id, **device.model_dump(), catalog=current
+        )
         current = catalog(project_id)
         return {"status": "saved", "device": item, "playbook_revision": current.revision}
 
     @router.get("/template")
     def get_template(
-        project_id: str, building_type: str = BUILDING_TYPE, model_revision: str | None = None,
+        project_id: str,
+        building_type: str = BUILDING_TYPE,
+        model_revision: str | None = None,
     ) -> dict:
         model = require_project_model(project_id)
         return _call_tool(
-            questionnaire_get_template, project_id, building_type,
-            model.revision if model_revision is None else model_revision, model=model,
+            questionnaire_get_template,
+            project_id,
+            building_type,
+            model.revision if model_revision is None else model_revision,
+            model=model,
         )
 
     @router.post("/submit")
     def submit(project_id: str, submission: QuestionnaireSubmission) -> dict:
         model = require_project_model(project_id)
         return _call_tool(
-            questionnaire_submit, project_id, **submission.model_dump(), model=model, store=store,
+            questionnaire_submit,
+            project_id,
+            **submission.model_dump(),
+            model=model,
+            store=store,
         )
 
     @router.get("/load-context")
@@ -620,8 +645,12 @@ def create_questionnaire_router(
     ) -> dict:
         require_project_model(project_id)
         return _call_tool(
-            questionnaire_get_load_context, project_id, space_id, questionnaire_revision,
-            store=store, include_answers=include_answers,
+            questionnaire_get_load_context,
+            project_id,
+            space_id,
+            questionnaire_revision,
+            store=store,
+            include_answers=include_answers,
         )
 
     return router
@@ -633,7 +662,12 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ifc", required=True, type=Path)
     parser.add_argument("--project-id", default="demo-house")
-    parser.add_argument("--playbook", type=Path, default=Path(__file__).resolve().parents[2] / "database/Playbook_dien_nha_pho_Viet_Nam_2-5_tang.xlsx")
+    parser.add_argument(
+        "--playbook",
+        type=Path,
+        default=Path(__file__).resolve().parents[2]
+        / "database/Playbook_dien_nha_pho_Viet_Nam_2-5_tang.xlsx",
+    )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
     if not args.project_id.strip():
@@ -647,11 +681,13 @@ def main(argv: list[str] | None = None) -> None:
         parser.exit(1, "Không truy cập được Supabase. Kiểm tra cấu hình và quyền của Client.\n")
     model = read_spaces(args.ifc)
     app = FastAPI(title="MVP Phase 1 Questionnaire")
-    app.include_router(create_questionnaire_router(
-        store,
-        lambda project_id: model if project_id == args.project_id else None,
-        playbook_path=args.playbook,
-    ))
+    app.include_router(
+        create_questionnaire_router(
+            store,
+            lambda project_id: model if project_id == args.project_id else None,
+            playbook_path=args.playbook,
+        )
+    )
     uvicorn.run(app, host="127.0.0.1", port=args.port)
 
 

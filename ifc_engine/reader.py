@@ -13,22 +13,16 @@ import ifcopenshell.util.unit
 class IfcReader:
     def __init__(self, path: Path):
         self.model = ifcopenshell.open(str(path))
-        self.length_scale = (
-            ifcopenshell.util.unit.calculate_unit_scale(self.model)
-        )
+        self.length_scale = ifcopenshell.util.unit.calculate_unit_scale(self.model)
 
     def _get_element(self, global_id: str, ifc_class: str):
         try:
             element = self.model.by_guid(global_id)
         except RuntimeError as error:
-            raise ValueError(
-                f"Không tìm thấy GlobalId: {global_id}"
-            ) from error
+            raise ValueError(f"Không tìm thấy GlobalId: {global_id}") from error
 
         if element is None or not element.is_a(ifc_class):
-            raise ValueError(
-                f"GlobalId không thuộc loại {ifc_class}: {global_id}"
-            )
+            raise ValueError(f"GlobalId không thuộc loại {ifc_class}: {global_id}")
 
         return element
 
@@ -64,14 +58,10 @@ class IfcReader:
         if storey_id is None:
             spaces = self.model.by_type("IfcSpace")
         else:
-            storey = self._get_element(
-                storey_id, "IfcBuildingStorey"
-            )
+            storey = self._get_element(storey_id, "IfcBuildingStorey")
             spaces = [
                 element
-                for element in (
-                    ifcopenshell.util.element.get_decomposition(storey)
-                )
+                for element in (ifcopenshell.util.element.get_decomposition(storey))
                 if element.is_a("IfcSpace")
             ]
 
@@ -106,9 +96,7 @@ class IfcReader:
 
         try:
             shape = ifcopenshell.geom.create_shape(settings, space)
-            vertices = ifcopenshell.util.shape.get_vertices(
-                shape.geometry
-            )
+            vertices = ifcopenshell.util.shape.get_vertices(shape.geometry)
         except RuntimeError:
             return {
                 "status": "unavailable",

@@ -3,6 +3,8 @@
 import json
 import unittest
 
+import pytest
+
 from tools.ifc_read import (
     _get_supabase_client,
     _normalize_text,
@@ -14,6 +16,7 @@ from tools.ifc_read import (
 )
 
 
+@pytest.mark.live
 class TestPlaybookTools(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -62,9 +65,10 @@ class TestPlaybookTools(unittest.TestCase):
             self.skipTest("Supabase chưa nạp mẫu aptomat vào các bảng catalog.")
         self.assertTrue(result, "Supabase chưa có mẫu aptomat trong catalog mô đun.")
         for device in result:
-            self.assertEqual(set(device), {
-                "module_id", "name", "ifc_class", "specs", "rated_power", "geometry_ref"
-            })
+            self.assertEqual(
+                set(device),
+                {"module_id", "name", "ifc_class", "specs", "rated_power", "geometry_ref"},
+            )
 
         den_result = playbook_query_devices(category="đèn trần", filters={})
         self.in_ket_qua("Tool 4 - đèn trần", den_result)
@@ -88,9 +92,9 @@ class TestPlaybookTools(unittest.TestCase):
             connection_requirements={"phases": ["1 pha"]},
         )
         self.in_ket_qua("Tool 6", result)
-        self.assertEqual(set(result), {
-            "terminal_class_id", "voltage", "phases", "connection_specs"
-        })
+        self.assertEqual(
+            set(result), {"terminal_class_id", "voltage", "phases", "connection_specs"}
+        )
         source_terminals = _playbook_rows(self.client, "lop_dau_cuoi")
         if not any(row.get("ma_lop_dau_cuoi") == "ĐIỂM-001" for row in source_terminals):
             self.skipTest("Supabase chưa nạp dữ liệu ĐIỂM-001 cho lop_dau_cuoi.")

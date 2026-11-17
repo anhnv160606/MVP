@@ -1,11 +1,11 @@
 """Tính phụ tải điện sơ bộ theo phòng, tầng hoặc zone."""
 
 import argparse
+import json
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from io import BytesIO
-import json
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -16,6 +16,7 @@ from ifc_engine.reader import read_spaces
 # ──────────────────────────────────────────────────────────────────────
 # Kiểm tra dữ liệu công suất
 # ──────────────────────────────────────────────────────────────────────
+
 
 def quantity(value, field, *, positive=False):
     if value is None:
@@ -42,9 +43,11 @@ def validate_power_values(row):
             raise ValueError("input_W và input_VA không khớp với power_factor")
     return watts, va, pf
 
+
 # ──────────────────────────────────────────────────────────────────────
 # Đọc lớp phụ tải từ Playbook
 # ──────────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class LoadClass:
@@ -69,7 +72,9 @@ def read_load_catalog(path: str | Path) -> Playbook:
         rows = workbook["Lớp phụ tải"].iter_rows(min_row=4, max_col=11, values_only=True)
         header = next(rows)
         if (header[0], header[6], header[9]) != (
-            "Mã lớp phụ tải", "Hệ số nhu cầu", "Nguồn quy tắc"
+            "Mã lớp phụ tải",
+            "Hệ số nhu cầu",
+            "Nguồn quy tắc",
         ):
             raise ValueError("Tiêu đề trong trang tính Lớp phụ tải không đúng định dạng")
         classes = {}
@@ -79,9 +84,7 @@ def read_load_catalog(path: str | Path) -> Playbook:
                 continue
             if key in classes:
                 raise ValueError(f"Mã lớp phụ tải bị trùng: {key}")
-            if factor is not None and (
-                type(factor) not in (int, float) or not 0 <= factor <= 1
-            ):
+            if factor is not None and (type(factor) not in (int, float) or not 0 <= factor <= 1):
                 raise ValueError(f"Hệ số nhu cầu không hợp lệ cho {key}")
             # Ô số có thể chỉnh sửa. Phạm vi áp dụng theo ánh xạ của MVP.
             if key in {"TẢI-002", "TẢI-003", "TẢI-004", "TẢI-005"}:
@@ -90,12 +93,15 @@ def read_load_catalog(path: str | Path) -> Playbook:
                 scope = "full_load_scenario"
             else:
                 scope = "equipment_scenario"
-            classes[key] = LoadClass(key, name, factor, scope, f"G{row_number}/J{row_number}: {source}")
+            classes[key] = LoadClass(
+                key, name, factor, scope, f"G{row_number}/J{row_number}: {source}"
+            )
         if not classes:
             raise ValueError("Playbook không có lớp phụ tải")
         return Playbook(sha256(data).hexdigest(), classes)
     finally:
         workbook.close()
+
 
 # ──────────────────────────────────────────────────────────────────────
 # Tính phụ tải sơ bộ
@@ -205,7 +211,9 @@ def resolve_loads(snapshot, playbook, scope_type, scope_id):
     pending = []
     for key, requirement in requirements.items():
         if in_scope(requirement):
-            missing = [unit for unit in range(1, requested[key] + 1) if (key, unit) not in fulfilled]
+            missing = [
+                unit for unit in range(1, requested[key] + 1) if (key, unit) not in fulfilled
+            ]
             if missing:
                 pending.append({**requirement, "pending_units": missing})
     warnings = []
@@ -245,7 +253,9 @@ def resolve_loads(snapshot, playbook, scope_type, scope_id):
     scenarios = {}
     for name, active_ids in snapshot.scenarios.items():
         require_id(name, "scenario_id")
-        if not isinstance(active_ids, list) or any(load_id not in placements for load_id in active_ids):
+        if not isinstance(active_ids, list) or any(
+            load_id not in placements for load_id in active_ids
+        ):
             raise ValueError(f"Mã tải trong kịch bản không tồn tại hoặc không hợp lệ: {name}")
         scenarios[name] = set(active_ids)
     if not scenarios:
@@ -271,10 +281,27 @@ def total(values, *, require_all=False):
 
 
 def calc_preliminary_load(
-    plan_id: str, plan_revision: str, scope_type: str, scope_id: str, *,
-    snapshot: ProjectSnapshot, playbook: Playbook, ruleset_id: str | None = RULESET_ID,
+    plan_id: str,
+    plan_revision: str,
+    scope_type: str,
+    scope_id: str,
+    *,
+    snapshot: ProjectSnapshot,
+    playbook: Playbook,
+    ruleset_id: str | None = RULESET_ID,
 ) -> dict:
-    """Trả kết quả tính sơ bộ từ snapshot hiện tại."""
+    """Aggregate sourced consumption for a pinned placement snapshot and scope.
+
+    plan_id/revision must match snapshot; scope_type is room/floor/zone and
+    scope_id its IFC GlobalId or declared zone ID. Each placement carries load_id,
+    room_id, load_class_id, kind and optional sourced input_W/VA/PF. Link requirement
+    units to avoid counting a declared appliance twice. Receptacle capacity is
+    not consumption; allowances require an explicit rule and circuit mapping.
+    Returns connected W/VA, estimated demand, per-load breakdown, assumptions,
+    source revisions and completeness warnings. Missing power, PF or demand rules
+    stay unknown. ruleset_id=None disables demand factors. No equipment selection,
+    IFC writing or compliance certification occurs here.
+    """
     if (plan_id, plan_revision) != (snapshot.plan_id, snapshot.plan_revision):
         raise ValueError("Revision phương án yêu cầu không khớp snapshot")
     if snapshot.playbook_revision is not None and snapshot.playbook_revision != playbook.revision:
@@ -305,10 +332,14 @@ def calc_preliminary_load(
                 # Giữ W/VA khai báo trực tiếp và bỏ PF chưa có nguồn khi quy đổi.
                 usable = {**row, "power_factor": None} if missing_pf_source else row
                 watts, va = power(usable)
-        breakdown.append({
-            **row, "floor_id": snapshot.model.rooms[row["room_id"]],
-            "connected_W": to_number(watts), "connected_VA": to_number(va),
-        })
+        breakdown.append(
+            {
+                **row,
+                "floor_id": snapshot.model.rooms[row["room_id"]],
+                "connected_W": to_number(watts),
+                "connected_VA": to_number(va),
+            }
+        )
         if kind not in CONSUMING_KINDS:
             continue
         if row.get("input_W") is None and row.get("input_VA") is None:
@@ -348,10 +379,16 @@ def calc_preliminary_load(
             s = va * multiplier if va is not None and multiplier is not None else None
             demand_w.append(w)
             demand_va.append(s)
-            rows.append({
-                "load_id": load_id, "factor": factor, "rule": rule, "source": source,
-                "demand_W": to_number(w), "demand_VA": to_number(s),
-            })
+            rows.append(
+                {
+                    "load_id": load_id,
+                    "factor": factor,
+                    "rule": rule,
+                    "source": source,
+                    "demand_W": to_number(w),
+                    "demand_VA": to_number(s),
+                }
+            )
         w, status_w = total(demand_w, require_all=True)
         s, status_va = total(demand_va, require_all=True)
         scenarios[scenario] = (w, s, status_w, status_va, rows)
@@ -359,29 +396,48 @@ def calc_preliminary_load(
     def peak(value_index, status_index):
         statuses = [entry[status_index] for entry in scenarios.values()]
         if any(status != "complete" for status in statuses):
-            return None, None, "unavailable" if all(s == "unavailable" for s in statuses) else "partial"
+            return (
+                None,
+                None,
+                "unavailable" if all(s == "unavailable" for s in statuses) else "partial",
+            )
         name = max(scenarios, key=lambda scenario: scenarios[scenario][value_index])
         return to_number(scenarios[name][value_index]), name, "complete"
 
     demand_w, peak_w, demand_coverage_w = peak(0, 2)
     demand_va, peak_va, demand_coverage_va = peak(1, 3)
     return {
-        "plan_id": plan_id, "plan_revision": plan_revision, "plan_status": snapshot.plan_status,
-        "scope_type": scope_type, "scope_id": scope_id,
-        "input_revisions": {"ifc_sha256": snapshot.model.revision, "playbook_sha256": playbook.revision},
+        "plan_id": plan_id,
+        "plan_revision": plan_revision,
+        "plan_status": snapshot.plan_status,
+        "scope_type": scope_type,
+        "scope_id": scope_id,
+        "input_revisions": {
+            "ifc_sha256": snapshot.model.revision,
+            "playbook_sha256": playbook.revision,
+        },
         "ruleset_id": ruleset_id,
         "connected_load_W": to_number(connected_w),
         "connected_load_VA": to_number(connected_va),
-        "estimated_demand_W": demand_w, "estimated_demand_VA": demand_va,
-        "peak_scenario_W": peak_w, "peak_scenario_VA": peak_va,
+        "estimated_demand_W": demand_w,
+        "estimated_demand_VA": demand_va,
+        "peak_scenario_W": peak_w,
+        "peak_scenario_VA": peak_va,
         "coverage": {
-            "connected_load_W": coverage_w, "connected_load_VA": coverage_va,
-            "estimated_demand_W": demand_coverage_w, "estimated_demand_VA": demand_coverage_va,
+            "connected_load_W": coverage_w,
+            "connected_load_VA": coverage_va,
+            "estimated_demand_W": demand_coverage_w,
+            "estimated_demand_VA": demand_coverage_va,
         },
         "load_breakdown": breakdown,
         "demand_breakdown": {
-            name: {"demand_W": to_number(w), "demand_VA": to_number(s),
-                   "coverage_W": cw, "coverage_VA": cs, "loads": rows}
+            name: {
+                "demand_W": to_number(w),
+                "demand_VA": to_number(s),
+                "coverage_W": cw,
+                "coverage_VA": cs,
+                "loads": rows,
+            }
             for name, (w, s, cw, cs, rows) in scenarios.items()
         },
         "pending_requirements": scoped.pending,
@@ -390,7 +446,8 @@ def calc_preliminary_load(
             "Giữ lại giá trị không có nguồn nhưng không cộng vào tổng. "
             "Không dùng PF thiếu nguồn để quy đổi.",
             "Phụ tải tính toán chỉ bao gồm tải đã bố trí trong các kịch bản được cung cấp."
-            if snapshot.scenarios else "Không có kịch bản hoạt động. Xem tất cả tải đã bố trí là đang hoạt động.",
+            if snapshot.scenarios
+            else "Không có kịch bản hoạt động. Xem tất cả tải đã bố trí là đang hoạt động.",
         ],
         "warnings": warnings,
     }
@@ -399,6 +456,7 @@ def calc_preliminary_load(
 # ──────────────────────────────────────────────────────────────────────
 # Lệnh chạy trên terminal
 # ──────────────────────────────────────────────────────────────────────
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -414,8 +472,13 @@ def main(argv=None):
         snapshot = read_snapshot(args.input, model)
         playbook = read_load_catalog(args.playbook)
         result = calc_preliminary_load(
-            snapshot.plan_id, snapshot.plan_revision, args.scope_type, args.scope_id,
-            snapshot=snapshot, playbook=playbook, ruleset_id=None if args.connected_only else RULESET_ID,
+            snapshot.plan_id,
+            snapshot.plan_revision,
+            args.scope_type,
+            args.scope_id,
+            snapshot=snapshot,
+            playbook=playbook,
+            ruleset_id=None if args.connected_only else RULESET_ID,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
     except (OSError, KeyError, TypeError, ValueError, RuntimeError, InvalidOperation) as error:

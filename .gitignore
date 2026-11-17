@@ -18,3 +18,4 @@ build/
 # Local IFC working files
 *.ifc
 ifc_file/
+data/

@@ -1,5 +1,10 @@
 """Tool 7: liệt kê thiết bị đã có trong mô hình IFC."""
 
+import math
+import os
+import unicodedata
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +12,17 @@ import ifcopenshell.util.element
 import ifcopenshell.util.placement
 
 from ifc_engine.reader import IfcReader
+
+_PLAYBOOK_CLIENT = ContextVar("playbook_client", default=None)
+
+
+@contextmanager
+def playbook_client_context(client):
+    token = _PLAYBOOK_CLIENT.set(client)
+    try:
+        yield
+    finally:
+        _PLAYBOOK_CLIENT.reset(token)
 
 
 DEFAULT_DEVICE_TYPES = (
@@ -95,9 +111,16 @@ def ifc_list_placed_devices(
             )
             chains = [list(ancestors(root)) for root in spatial_roots]
             matching_chains = [
-                chain for chain in chains
-                if (space_id is None or any(s.is_a("IfcSpace") and s.GlobalId == space_id for s in chain))
-                and (storey_id is None or any(s.is_a("IfcBuildingStorey") and s.GlobalId == storey_id for s in chain))
+                chain
+                for chain in chains
+                if (
+                    space_id is None
+                    or any(s.is_a("IfcSpace") and s.GlobalId == space_id for s in chain)
+                )
+                and (
+                    storey_id is None
+                    or any(s.is_a("IfcBuildingStorey") and s.GlobalId == storey_id for s in chain)
+                )
             ]
             if (space_id is not None or storey_id is not None) and not matching_chains:
                 continue
@@ -112,23 +135,23 @@ def ifc_list_placed_devices(
                     for index, axis in enumerate(("x", "y", "z"))
                 }
 
-            result.append({
-                "element_id": element.GlobalId,
-                "device_type": element.ObjectType or element.Name or element.is_a(),
-                "space_id": space.GlobalId if space else None,
-                "position": position,
-                "properties": {
-                    "ifc_type": element.is_a(),
-                    "name": element.Name,
-                    "property_sets": ifcopenshell.util.element.get_psets(element),
-                },
-            })
+            result.append(
+                {
+                    "element_id": element.GlobalId,
+                    "device_type": element.ObjectType or element.Name or element.is_a(),
+                    "space_id": space.GlobalId if space else None,
+                    "position": position,
+                    "properties": {
+                        "ifc_type": element.is_a(),
+                        "name": element.Name,
+                        "property_sets": ifcopenshell.util.element.get_psets(element),
+                    },
+                }
+            )
     return sorted(result, key=lambda item: item["element_id"])
 
 
 # Các phần bổ sung dưới đây giữ nguyên tool 7 ở phía trên.
-import os
-import unicodedata
 
 
 def _default_ifc_path() -> Path:
@@ -142,13 +165,19 @@ def _default_ifc_path() -> Path:
 
     project_root = Path(__file__).resolve().parents[1]
     for relative_path in (
-        Path("ifc_file/ctr.ifc"), Path("ifc_file/A.ifc"),
-        Path("ctr.ifc"), Path("A.ifc"), Path("../ctr.ifc"), Path("../A.ifc"),
+        Path("ifc_file/ctr.ifc"),
+        Path("ifc_file/A.ifc"),
+        Path("ctr.ifc"),
+        Path("A.ifc"),
+        Path("../ctr.ifc"),
+        Path("../A.ifc"),
     ):
         path = project_root / relative_path
         if path.is_file():
             return path
-    raise FileNotFoundError("Không tìm thấy IFC; hãy đặt IFC_FILE_PATH hoặc thêm tệp vào ifc_file/.")
+    raise FileNotFoundError(
+        "Không tìm thấy IFC; hãy đặt IFC_FILE_PATH hoặc thêm tệp vào ifc_file/."
+    )
 
 
 def _normalize_text(value: Any) -> str:
@@ -223,9 +252,9 @@ def _ifc_element_record(element, length_scale: float) -> dict[str, Any]:
 
 def _placement_category(record: dict[str, Any]) -> str | None:
     ifc_class = str(record.get("ifc_class") or "").casefold()
-    label = _normalize_text(" ".join(str(record.get(key) or "") for key in (
-        "name", "object_type", "predefined_type"
-    )))
+    label = _normalize_text(
+        " ".join(str(record.get(key) or "") for key in ("name", "object_type", "predefined_type"))
+    )
     if "ifcdoor" in ifc_class:
         return "doors"
     if "ifcwindow" in ifc_class:
@@ -237,11 +266,21 @@ def _placement_category(record: dict[str, Any]) -> str | None:
     return "obstacles"
 
 
-def ifc_get_placement_context(space_id: str) -> dict[str, Any]:
-    """Tool 1: đọc ngữ cảnh bố trí từ IFC; đầu vào duy nhất là space_id."""
+def ifc_get_placement_context(
+    space_id: str, ifc_file_path: str | Path | None = None
+) -> dict[str, Any]:
+    """Read room geometry, boundary hosts, openings and known obstacles.
+
+    `space_id` is an IfcSpace GlobalId. The backend binds `ifc_file_path` to
+    the current project's IFC; standalone callers may use IFC_FILE_PATH.
+    Coordinates and geometry are model-world metres. Bounding boxes are
+    approximations, not room polygons or verified mounting surfaces. Inspect
+    missing_data before proposing coordinates; never infer absent obstacles.
+    This operation does not change the IFC or generate placements.
+    """
     import ifcopenshell.util.element
 
-    reader = IfcReader(_default_ifc_path())
+    reader = IfcReader(Path(ifc_file_path) if ifc_file_path else _default_ifc_path())
     space = reader._get_element(space_id, "IfcSpace")
     model = reader.model
     geometry_source = reader.get_space_geometry(space_id)
@@ -262,9 +301,11 @@ def ifc_get_placement_context(space_id: str) -> dict[str, Any]:
     except (AttributeError, TypeError):
         pass
 
-    storey = ifcopenshell.util.element.get_container(space)
+    storey = ifcopenshell.util.element.get_parent(space)
     visited = set()
-    while storey is not None and not storey.is_a("IfcBuildingStorey") and storey.id() not in visited:
+    while (
+        storey is not None and not storey.is_a("IfcBuildingStorey") and storey.id() not in visited
+    ):
         visited.add(storey.id())
         storey = ifcopenshell.util.element.get_aggregate(storey)
     storey_name = getattr(storey, "Name", None) if storey is not None else None
@@ -278,7 +319,11 @@ def ifc_get_placement_context(space_id: str) -> dict[str, Any]:
     for relation in model.by_type("IfcRelSpaceBoundary"):
         relating_space = getattr(relation, "RelatingSpace", None)
         element = getattr(relation, "RelatedBuildingElement", None)
-        if relating_space is not None and relating_space.GlobalId == space_id and element is not None:
+        if (
+            relating_space is not None
+            and relating_space.GlobalId == space_id
+            and element is not None
+        ):
             boundary.append(element)
 
     # Lần theo quan hệ tường, lỗ mở và cửa/cửa sổ lấp đầy lỗ mở.
@@ -302,7 +347,9 @@ def ifc_get_placement_context(space_id: str) -> dict[str, Any]:
             contained.extend(getattr(relation, "RelatedElements", ()) or ())
 
     result: dict[str, Any] = {
-        "space_type": _space_type_from_name(getattr(space, "Name", None), getattr(space, "LongName", None)),
+        "space_type": _space_type_from_name(
+            getattr(space, "Name", None), getattr(space, "LongName", None)
+        ),
         "geometry": {
             "room_name": getattr(space, "LongName", None) or getattr(space, "Name", None),
             "bbox": bbox,
@@ -310,10 +357,13 @@ def ifc_get_placement_context(space_id: str) -> dict[str, Any]:
             "area_m2": area_m2,
             "area_bbox_estimate_m2": (
                 abs((bbox["max"][0] - bbox["min"][0]) * (bbox["max"][1] - bbox["min"][1]))
-                if bbox else None
+                if bbox
+                else None
             ),
             "area_bbox_estimate_note": "Ước lượng theo hộp bao, không thay cho diện tích đo bóc hoặc biên phòng thực.",
-            "geometry_quality": "ifc_geometry_bbox" if geometry_source.get("status") == "ok" else "unavailable",
+            "geometry_quality": "ifc_geometry_bbox"
+            if geometry_source.get("status") == "ok"
+            else "unavailable",
             "storey_name": storey_name,
             "storey_elevation_m": storey_elevation,
         },
@@ -376,13 +426,32 @@ def _get_supabase_client():
     from config.settings import Settings
     from database.supabase_client import get_supabase_client
 
-    return get_supabase_client(Settings())
+    return _PLAYBOOK_CLIENT.get() or get_supabase_client(Settings())
 
 
 def _playbook_rows(client, table: str) -> list[dict[str, Any]]:
     """Đọc toàn bộ hàng cần tra từ một bảng Playbook."""
-    response = client.table(table).select("*").execute()
-    return response.data or []
+    rows = []
+    offset, page_size = 0, 500
+    key = {
+        "quy_tac_doi_tuong": "ma_quy_tac",
+        "lop_phu_tai": "ma_lop_phu_tai",
+        "lop_dau_cuoi": "ma_lop_dau_cuoi",
+    }.get(table, "id")
+    while True:
+        page = (
+            client.table(table)
+            .select("*")
+            .order(key)
+            .range(offset, offset + page_size - 1)
+            .execute()
+            .data
+            or []
+        )
+        rows.extend(page)
+        if len(page) < page_size:
+            return rows
+        offset += page_size
 
 
 def _room_matches(scope: Any, space_type: str) -> bool:
@@ -420,7 +489,8 @@ def _device_matches(query: str, *values: Any) -> bool:
     # (tránh trường hợp "đèn trần" khớp nhầm với "công tắc điều khiển đèn" chỉ vì chung chữ "đèn")
     ignored = {"diem", "cap", "dien", "thiet", "bi", "phong", "cho", "loai", "cac"}
     query_words = {
-        word for word in query_text.replace(",", " ").replace(";", " ").split()
+        word
+        for word in query_text.replace(",", " ").replace(";", " ").split()
         if len(word) > 1 and word not in ignored
     }
     if not query_words:
@@ -449,11 +519,13 @@ def _row_matches_filters(row: dict[str, Any], filters: dict[str, Any] | None) ->
 
 def _to_number(value: Any) -> int | float | None:
     """Chuyển giá trị số từ Supabase (int, float, Decimal, chuỗi) về số Python."""
-    if value is None or value == "":
+    if value is None or value == "" or isinstance(value, bool):
         return None
     try:
         number = float(value)
     except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
         return None
     return int(number) if number.is_integer() else number
 
@@ -485,57 +557,72 @@ def playbook_get_object_rules(
             continue
         if not _room_matches(row.get("khong_gian_thuong_gap"), space_type):
             continue
-        rules.append({
-            "rule_id": row.get("ma_quy_tac"),
-            "rule_name": row.get("ten_quy_tac"),
-            "rule_type": "object",
-            "terminal_class_id": row.get("lop_dau_cuoi_ma"),
-            "ifc_match_field": row.get("truong_ifc_doi_chieu"),
-            "match_method": row.get("phuong_thuc_khop"),
-            "keywords": keywords,
-            "placement_principle": None,
-            "mounting_height": None,
-            "constraints": [value for value in (
-                row.get("dieu_kien_bo_sung"), row.get("xu_ly_canh_bao")
-            ) if value],
-            "source": "Playbook > Quy tắc đối tượng",
-            "source_status": row.get("tinh_trang_kiem_chung"),
-            "scope": row.get("khong_gian_thuong_gap"),
-            "standard_applicability": "Chưa được nêu trong nguồn",
-            "raw_rule": row,
-        })
+        rules.append(
+            {
+                "rule_id": row.get("ma_quy_tac"),
+                "rule_name": row.get("ten_quy_tac"),
+                "rule_type": "object",
+                "terminal_class_id": row.get("lop_dau_cuoi_ma"),
+                "ifc_match_field": row.get("truong_ifc_doi_chieu"),
+                "match_method": row.get("phuong_thuc_khop"),
+                "keywords": keywords,
+                "placement_principle": None,
+                "mounting_height": None,
+                "constraints": [
+                    value
+                    for value in (row.get("dieu_kien_bo_sung"), row.get("xu_ly_canh_bao"))
+                    if value
+                ],
+                "source": "Playbook > Quy tắc đối tượng",
+                "source_status": row.get("tinh_trang_kiem_chung"),
+                "scope": row.get("khong_gian_thuong_gap"),
+                "standard_applicability": "Chưa được nêu trong nguồn",
+                "raw_rule": row,
+            }
+        )
 
     for row in _playbook_rows(client, "quy_tac_phong"):
         if not _room_matches(row.get("loai_khong_gian"), space_type):
             continue
         if not _device_matches(device_type, row.get("thiet_bi_thuong_xet")):
             continue
-        rules.append({
-            "rule_id": f"room:{row.get('id')}",
-            "rule_name": row.get("loai_khong_gian"),
-            "rule_type": "room",
-            "terminal_class_id": None,
-            "ifc_match_field": None,
-            "match_method": None,
-            "keywords": [],
-            "placement_principle": row.get("nguyen_tac_bo_tri"),
-            "mounting_height": row.get("cao_do_lap_dat"),
-            "constraints": [value for value in (
-                row.get("kiem_tra_bo_sung"), row.get("gioi_han_canh_bao")
-            ) if value],
-            "source": "Playbook > Quy tắc phòng",
-            "source_status": row.get("loai_du_lieu"),
-            "scope": row.get("loai_khong_gian"),
-            "standard_applicability": "Chưa được nêu trong nguồn",
-            "raw_rule": row,
-        })
+        rules.append(
+            {
+                "rule_id": f"room:{row.get('id')}",
+                "rule_name": row.get("loai_khong_gian"),
+                "rule_type": "room",
+                "terminal_class_id": None,
+                "ifc_match_field": None,
+                "match_method": None,
+                "keywords": [],
+                "placement_principle": row.get("nguyen_tac_bo_tri"),
+                "mounting_height": row.get("cao_do_lap_dat"),
+                "constraints": [
+                    value
+                    for value in (row.get("kiem_tra_bo_sung"), row.get("gioi_han_canh_bao"))
+                    if value
+                ],
+                "source": "Playbook > Quy tắc phòng",
+                "source_status": row.get("loai_du_lieu"),
+                "scope": row.get("loai_khong_gian"),
+                "standard_applicability": "Chưa được nêu trong nguồn",
+                "raw_rule": row,
+            }
+        )
     return {"rules": rules}
 
 
 def playbook_query_devices(
     category: str, filters: dict[str, Any] | None = None
 ) -> list[dict[str, Any]]:
-    """Tool 4: tra catalog thiết bị có trong Playbook, không tự tạo mẫu."""
+    """Find existing catalog modules, breakers and connection devices by category.
+
+    category matches normalized Vietnamese/English device keywords. filters maps
+    source column names to exact/substring values. Returns module_id/name, specs,
+    optional ifc_class, rated_power and geometry_ref; null means missing source
+    data, not a default. Inspect specs before treating any rating as consumption.
+    This lookup does not create IFC instances or invent unavailable catalog IDs.
+    """
     client = _get_supabase_client()
     result = []
     for table, key in (
@@ -548,17 +635,27 @@ def playbook_query_devices(
                 continue
             if not _row_matches_filters(row, filters):
                 continue
-            result.append({
-                "module_id": row.get(key), "name": row.get(key),
-                "ifc_class": row.get("ifc_class"), "specs": row,
-                "rated_power": row.get("rated_power_w"),
-                "geometry_ref": row.get("geometry_ref"),
-            })
+            result.append(
+                {
+                    "module_id": row.get(key),
+                    "name": row.get(key),
+                    "ifc_class": row.get("ifc_class"),
+                    "specs": row,
+                    "rated_power": row.get("rated_power_w"),
+                    "geometry_ref": row.get("geometry_ref"),
+                }
+            )
     return result
 
 
 def playbook_get_load_class(space_type: str, device_category: str) -> dict[str, Any]:
-    """Tool 5: xác định lớp phụ tải phù hợp với không gian và thiết bị."""
+    """Resolve a unique Playbook load class from room usage and device category.
+
+    space_type/device_category are semantic labels, not IFC IDs. Returns the
+    source load_class_id, load_class_name and load_type. No or ambiguous matches
+    return null fields. A load class is not a demand/diversity factor; this tool
+    does not estimate power or choose a breaker.
+    """
     client = _get_supabase_client()
     category = _normalize_text(device_category)
     aliases = (
@@ -568,9 +665,14 @@ def playbook_get_load_class(space_type: str, device_category: str) -> dict[str, 
         (("binh nong lanh", "water heater"), "binh nuoc nong"),
         (("may bom", "pump"), "may bom"),
     )
-    category = next((target for keys, target in aliases if any(
-        category == key or category.startswith(f"{key} ") for key in keys
-    )), category)
+    category = next(
+        (
+            target
+            for keys, target in aliases
+            if any(category == key or category.startswith(f"{key} ") for key in keys)
+        ),
+        category,
+    )
     room = _normalize_text(space_type)
     candidates = []
     for row in _playbook_rows(client, "lop_phu_tai"):
@@ -621,7 +723,7 @@ def _requested_phases(requested: Any) -> set[str]:
 
 
 def playbook_get_terminal_class(
-    device_type: str, connection_requirements: Any
+    device_type: str, connection_requirements: dict[str, Any]
 ) -> dict[str, Any]:
     """Tool 6: tra lớp đầu cuối (lop_dau_cuoi) và đặc điểm kết nối trong Playbook.
 
@@ -630,13 +732,12 @@ def playbook_get_terminal_class(
     điện áp khi cột để trống.
     """
     client = _get_supabase_client()
-    requirements = connection_requirements if isinstance(connection_requirements, dict) else {
-        "description": connection_requirements
-    }
-    loads = {
-        row.get("ma_lop_phu_tai"): row
-        for row in _playbook_rows(client, "lop_phu_tai")
-    }
+    requirements = (
+        connection_requirements
+        if isinstance(connection_requirements, dict)
+        else {"description": connection_requirements}
+    )
+    loads = {row.get("ma_lop_phu_tai"): row for row in _playbook_rows(client, "lop_phu_tai")}
 
     candidates = []
     for row in _playbook_rows(client, "lop_dau_cuoi"):
@@ -654,11 +755,16 @@ def playbook_get_terminal_class(
             row.get("kieu_diem_ket_noi")
         ):
             continue
+        voltage = requirements.get("voltage")
+        if voltage is not None and _to_number(row.get("dien_ap_v")) != voltage:
+            continue
         candidates.append((row, phases))
 
     if len(candidates) != 1:
         return {
-            "terminal_class_id": None, "voltage": None, "phases": [],
+            "terminal_class_id": None,
+            "voltage": None,
+            "phases": [],
             "connection_specs": {"missing_data": ["unique_terminal_class", "voltage"]},
         }
 

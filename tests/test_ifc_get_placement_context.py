@@ -3,10 +3,13 @@
 import json
 import unittest
 
+import pytest
+
 from ifc_engine.reader import IfcReader
 from tools.ifc_read import _default_ifc_path, ifc_get_placement_context
 
 
+@pytest.mark.ifc
 class TestIfcGetPlacementContext(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -21,10 +24,20 @@ class TestIfcGetPlacementContext(unittest.TestCase):
         print("\nKết quả Tool 1:")
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
-        self.assertEqual(set(result), {
-            "space_type", "geometry", "walls", "ceiling", "doors", "windows",
-            "obstacles", "coordinate_system", "missing_data",
-        })
+        self.assertEqual(
+            set(result),
+            {
+                "space_type",
+                "geometry",
+                "walls",
+                "ceiling",
+                "doors",
+                "windows",
+                "obstacles",
+                "coordinate_system",
+                "missing_data",
+            },
+        )
         self.assertIsInstance(result["geometry"], dict)
         for key in ("walls", "ceiling", "doors", "windows", "obstacles", "missing_data"):
             self.assertIsInstance(result[key], list)

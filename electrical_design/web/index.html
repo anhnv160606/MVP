@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Volt Studio · Demo bố trí thiết bị điện</title>
+    <link rel="stylesheet" href="/demo-assets/styles.css" />
+    <script type="module" src="/demo-assets/app.js"></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Volt Studio trang chủ"
+        ><span class="brand-icon">ϟ</span
+        ><span
+          >volt<span class="brand-light">studio</span
+          ><small>ELECTRICAL DESIGN WORKSPACE</small></span
+        ></a
+      >
+      <div class="sidebar-label">QUY TRÌNH THIẾT KẾ</div>
+      <nav aria-label="Các bước thiết kế">
+        <a href="#project-card" class="step active" data-step="1"
+          ><span class="step-number">01</span
+          ><span
+            >Mô hình kiến trúc<small>Upload & chọn không gian</small></span
+          ></a
+        >
+        <a href="#questionnaire-card" class="step" data-step="2"
+          ><span class="step-number">02</span
+          ><span
+            >Nhu cầu sử dụng<small>Khai báo thiết bị theo phòng</small></span
+          ></a
+        >
+        <a href="#agent-card" class="step" data-step="3"
+          ><span class="step-number">03</span
+          ><span
+            >Agent bố trí<small>Đề xuất & kiểm tra phương án</small></span
+          ></a
+        >
+        <a href="#review-card" class="step" data-step="4"
+          ><span class="step-number">04</span
+          ><span>Duyệt & xuất IFC<small>Kỹ sư kiểm tra kết quả</small></span></a
+        >
+      </nav>
+      <div class="sidebar-bottom">
+        <span class="live-dot"></span> LOCAL DEMO
+        <span class="version">v0.2</span>
+        <p>Không gian làm việc cho<br />thiết kế điện từ mô hình IFC.</p>
+        <a href="/docs" target="_blank" rel="noopener">Tài liệu API ↗</a>
+      </div>
+    </aside>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="breadcrumb">Workspace <span>/</span> Bố trí thiết bị</div>
+        <div class="topbar-right">
+          <span id="connection-status" class="status-pill neutral"
+            >Chưa kết nối</span
+          ><button
+            id="settings-button"
+            class="icon-button"
+            type="button"
+            title="Cấu hình kết nối"
+            aria-label="Cấu hình kết nối"
+          >
+            ⚙
+          </button>
+        </div>
+      </header>
+      <main>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">AI ELECTRICAL DESIGN</div>
+            <h1>Từ không gian đến phương án điện.</h1>
+            <p>
+              Chọn phòng, khai báo nhu cầu và cùng Agent xây dựng phương án bố
+              trí.
+            </p>
+          </div>
+          <button id="sample-button" class="button secondary" type="button">
+            Xem dữ liệu mẫu <span>↗</span>
+          </button>
+        </div>
+        <div id="sample-banner" class="banner info" hidden>
+          Dữ liệu minh họa · Không gọi LLM, không lưu database và không ghi IFC.
+          <button id="exit-sample" type="button">Quay lại dự án thật →</button>
+        </div>
+        <div
+          id="notice"
+          role="status"
+          aria-live="polite"
+          class="banner"
+          hidden
+        ></div>
+
+        <div class="workspace-grid">
+          <div class="controls-column">
+            <section class="card" id="project-card">
+              <div class="card-heading">
+                <div>
+                  <span class="section-index">01</span>
+                  <h2>Mô hình kiến trúc</h2>
+                </div>
+                <span id="project-status" class="mini-badge"
+                  >CHƯA CÓ DỰ ÁN</span
+                >
+              </div>
+              <form id="upload-form">
+                <label for="project-name">Tên dự án</label
+                ><input
+                  id="project-name"
+                  name="name"
+                  placeholder="Ví dụ: Nhà phố · phương án 01"
+                  required
+                  maxlength="200"
+                />
+                <label class="dropzone" id="dropzone" for="ifc-file"
+                  ><span class="file-icon">▧</span
+                  ><strong id="file-name">Chọn mô hình kiến trúc IFC</strong
+                  ><span>Nhấn để chọn hoặc kéo thả tệp vào đây</span
+                  ><small>IFC4 có IfcSpace · tối đa 250 MB</small
+                  ><input
+                    id="ifc-file"
+                    name="file"
+                    type="file"
+                    accept=".ifc"
+                    required
+                /></label>
+                <button
+                  id="upload-button"
+                  class="button primary full"
+                  type="submit"
+                >
+                  ↑ Upload & tạo dự án
+                </button>
+              </form>
+              <details class="restore-project">
+                <summary>Mở lại dự án bằng ID</summary>
+                <div class="inline-input">
+                  <input
+                    id="restore-id"
+                    aria-label="ID dự án cần mở lại"
+                    placeholder="Project UUID"
+                  /><button
+                    id="restore-button"
+                    class="button secondary"
+                    type="button"
+                  >
+                    Mở
+                  </button>
+                </div>
+              </details>
+              <div class="room-picker">
+                <label for="room-select">Không gian đang làm việc</label
+                ><select id="room-select" disabled>
+                  <option>Upload mô hình để chọn phòng</option></select
+                ><small id="project-meta">Chưa có mô hình được tải.</small>
+              </div>
+            </section>
+
+            <section class="card" id="questionnaire-card">
+              <div class="card-heading">
+                <div>
+                  <span class="section-index">02</span>
+                  <h2>Nhu cầu sử dụng</h2>
+                </div>
+                <span id="questionnaire-revision" class="mini-badge"
+                  >CHƯA LƯU</span
+                >
+              </div>
+              <p class="card-description">
+                Khai báo cho phòng đang chọn. Các phòng khác được giữ nguyên khi
+                lưu.
+              </p>
+              <form id="questionnaire-form">
+                <div id="questions" class="questions-empty">
+                  Danh sách nhu cầu sẽ xuất hiện sau khi chọn phòng.
+                </div>
+                <button
+                  id="save-questionnaire"
+                  class="button secondary full"
+                  type="submit"
+                  disabled
+                >
+                  Lưu nhu cầu sử dụng
+                </button>
+              </form>
+            </section>
+
+            <section class="card" id="agent-card">
+              <div class="card-heading">
+                <div>
+                  <span class="section-index">03</span>
+                  <h2>Agent bố trí</h2>
+                </div>
+                <span class="ai-badge">✦ AI</span>
+              </div>
+              <label for="agent-message">Yêu cầu hoặc phản hồi cho Agent</label
+              ><textarea
+                id="agent-message"
+                rows="4"
+                placeholder="Ví dụ: Bố trí theo nhu cầu phòng đang chọn. Ưu tiên ổ cắm gần bàn làm việc và giải thích các vị trí đề xuất."
+              ></textarea>
+              <div class="button-row">
+                <button
+                  id="run-agent"
+                  class="button primary"
+                  type="button"
+                  disabled
+                >
+                  ✦ Đề xuất phương án</button
+                ><button
+                  id="cancel-agent"
+                  class="button secondary"
+                  type="button"
+                  hidden
+                >
+                  Dừng
+                </button>
+              </div>
+              <div class="activity-heading">
+                <span id="activity-label">HOẠT ĐỘNG</span
+                ><span id="activity-count">0 sự kiện</span>
+              </div>
+              <div id="activity-log" class="activity-log" aria-live="polite">
+                <div class="log-placeholder">
+                  Các bước đọc mô hình, tra quy tắc và lưu nháp sẽ hiển thị tại
+                  đây.
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="visual-column">
+            <section class="card drawing-card">
+              <div class="card-heading">
+                <div>
+                  <span class="section-index">↗</span>
+                  <h2>Sơ đồ bố trí</h2>
+                </div>
+                <span class="mini-badge">MẶT BẰNG 2D</span>
+              </div>
+              <div class="drawing-toolbar">
+                <div>
+                  <span class="live-dot"></span
+                  ><strong id="drawing-room">Chưa chọn không gian</strong>
+                </div>
+                <span id="drawing-unit">MODEL WORLD · MÉT</span>
+              </div>
+              <div id="drawing" class="drawing">
+                <div class="drawing-empty">
+                  <span class="empty-graphic">⌑</span>
+                  <h3>Phương án bắt đầu từ một không gian</h3>
+                  <p>
+                    Upload IFC hoặc mở dữ liệu mẫu để xem<br />sơ đồ phòng và
+                    các thiết bị đề xuất.
+                  </p>
+                </div>
+              </div>
+              <div class="drawing-legend">
+                <span><i class="legend-dot light"></i>Đèn</span
+                ><span><i class="legend-dot outlet"></i>Ổ cắm</span
+                ><span><i class="legend-dot switch"></i>Công tắc</span
+                ><span><i class="legend-dot other"></i>Khác</span
+                ><span class="legend-axis">X → &nbsp; Y ↑</span>
+              </div>
+              <p class="drawing-note">
+                Sơ đồ chiếu bằng từ bounding box phòng và tọa độ đề xuất, chưa
+                thể hiện đầy đủ tường, cửa hay vật cản. Mở IFC để kiểm tra mô
+                hình thực tế.
+              </p>
+            </section>
+
+            <div class="metrics">
+              <div class="metric">
+                <span>THIẾT BỊ ĐỀ XUẤT</span><strong id="device-count">—</strong
+                ><small id="device-count-note">Trong phòng đang chọn</small>
+              </div>
+              <div class="metric">
+                <span>LỖI CẦN SỬA</span><strong id="error-count">—</strong
+                ><small>Trước khi phê duyệt</small>
+              </div>
+              <div class="metric">
+                <span>CẢNH BÁO</span><strong id="warning-count">—</strong
+                ><small>Cần kỹ sư đánh giá</small>
+              </div>
+            </div>
+
+            <section class="card" id="review-card">
+              <div class="card-heading">
+                <div>
+                  <span class="section-index">04</span>
+                  <h2>Kiểm tra phương án</h2>
+                </div>
+                <button
+                  id="refresh-review"
+                  class="text-button"
+                  type="button"
+                  disabled
+                >
+                  ↻ Cập nhật
+                </button>
+              </div>
+              <div class="review-meta">
+                <span id="phase-label" class="status-pill neutral"
+                  >Đang chờ dữ liệu</span
+                ><span id="plan-version">Chưa có bản nháp</span>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Thiết bị</th>
+                      <th>X / Y / Z (m)</th>
+                      <th>Vị trí gắn</th>
+                    </tr>
+                  </thead>
+                  <tbody id="device-table">
+                    <tr>
+                      <td colspan="3" class="empty-cell">
+                        Chưa có thiết bị đề xuất trong phòng.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <details id="validation-details" class="validation-details">
+                <summary>
+                  Cảnh báo & kết quả kiểm tra
+                  <span id="validation-count">0</span>
+                </summary>
+                <div id="validation-list">
+                  <p class="muted">Chưa có kết quả validation.</p>
+                </div>
+              </details>
+              <p class="review-disclaimer">
+                Kết quả kiểm tra hình học là sơ bộ. Kỹ sư cần xem cảnh báo và
+                đối chiếu IFC trước khi duyệt.
+              </p>
+              <label class="checkbox-label"
+                ><input id="review-confirm" type="checkbox" disabled /><span
+                  >Tôi đã xem toàn bộ phương án và các cảnh báo.</span
+                ></label
+              >
+              <div class="button-row">
+                <button
+                  id="approve-button"
+                  class="button primary"
+                  type="button"
+                  disabled
+                >
+                  ✓ Duyệt & ghi IFC</button
+                ><button
+                  id="download-button"
+                  class="button secondary"
+                  type="button"
+                  disabled
+                >
+                  ↓ Tải IFC
+                </button>
+              </div>
+              <details class="raw-details">
+                <summary>Dữ liệu phương án (JSON)</summary>
+                <pre id="raw-plan">Chưa có phương án.</pre>
+              </details>
+            </section>
+          </div>
+        </div>
+        <footer>
+          VOLT STUDIO <span>Agent đề xuất. Kỹ sư quyết định.</span
+          ><span>Demo đặt thiết bị điện · IFC4</span>
+        </footer>
+      </main>
+    </div>
+
+    <dialog id="settings-dialog">
+      <form id="settings-form">
+        <div class="dialog-heading">
+          <h2>Kết nối backend</h2>
+          <button
+            id="close-settings"
+            class="icon-button"
+            type="button"
+            aria-label="Đóng"
+          >
+            ×
+          </button>
+        </div>
+        <p>Giao diện dùng API cùng địa chỉ với trang hiện tại.</p>
+        <label for="api-token"
+          >API token <span class="muted">(nếu backend yêu cầu)</span></label
+        ><input
+          id="api-token"
+          type="password"
+          autocomplete="off"
+          placeholder="Giá trị API_TOKEN trong .env"
+        /><small
+          >Chỉ nhập API_TOKEN của ứng dụng, không nhập khóa Supabase hoặc LLM.
+          Token chỉ giữ trong bộ nhớ tab.</small
+        ><button class="button primary full" type="submit">
+          Kết nối & kiểm tra cấu hình
+        </button>
+        <div id="readiness-list" class="readiness-list"></div>
+      </form>
+    </dialog>
+  </body>
+</html>
