@@ -1,0 +1,823 @@
+[
+  {
+    "name": "ifc_get_building_summary",
+    "description": "Return schema, storeys and room count. Total room area is unavailable unless separately quantified.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ifc_get_building_summaryArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_get_doors_windows",
+    "description": "Read doors/windows linked through room boundaries and openings; missing links are reported, not inferred.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "space_id": {
+          "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID.",
+          "title": "Space Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "space_id"
+      ],
+      "title": "ifc_get_doors_windowsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_get_space_adjacency",
+    "description": "Find neighboring spaces sharing boundary-element GlobalIds; this is topological evidence, not a distance test.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "space_id": {
+          "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID.",
+          "title": "Space Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "space_id"
+      ],
+      "title": "ifc_get_space_adjacencyArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_get_space_geometry",
+    "description": "Read a room's world bounding box in metres. Unavailable geometry is explicit; no polygon is inferred.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "space_id": {
+          "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID.",
+          "title": "Space Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "space_id"
+      ],
+      "title": "ifc_get_space_geometryArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_get_spaces",
+    "description": "List room GlobalIds/names, optionally below a storey GlobalId. Does not infer room usage.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "storey_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IfcBuildingStorey.GlobalId; omit to query the whole current model.",
+          "title": "Storey Id"
+        }
+      },
+      "title": "ifc_get_spacesArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_get_storeys",
+    "description": "List storey GlobalIds, names and elevations in metres, sorted by elevation.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ifc_get_storeysArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_search_elements",
+    "description": "Page products by IFC class and optional case-insensitive name substring. Returns GlobalIds and world metre geometry; limit 1..200.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "ifc_class": {
+          "description": "IFC entity class name, for example IfcWall, IfcOutlet or IfcSpace.",
+          "title": "Ifc Class",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "limit": {
+          "default": 50,
+          "description": "Maximum records in this page; use small pages to avoid provider output truncation.",
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "description": "Zero-based result offset. Continue paging until all items are read.",
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ifc_class"
+      ],
+      "title": "ifc_search_elementsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_get_placement_context",
+    "description": "Read room geometry, boundary hosts, openings and known obstacles.\n\n`space_id` is an IfcSpace GlobalId. The backend binds `ifc_file_path` to\nthe current project's IFC; standalone callers may use IFC_FILE_PATH.\nCoordinates and geometry are model-world metres. Bounding boxes are\napproximations, not room polygons or verified mounting surfaces. Inspect\nmissing_data before proposing coordinates; never infer absent obstacles.\nThis operation does not change the IFC or generate placements.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "space_id": {
+          "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID.",
+          "title": "Space Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "space_id"
+      ],
+      "title": "ifc_get_placement_contextArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_list_placed_devices",
+    "description": "Liệt kê thiết bị và đối tượng hiện có trong IFC để lập phương án bố trí.\n\nGọi trước khi đề xuất thiết bị mới để xem hiện trạng. Lọc theo quan hệ\nchứa/tham chiếu không gian và cấu trúc tầng của IFC; không suy ra phòng\ntừ tọa độ hoặc bounding box. Kết quả có thể gồm nội thất và proxy.\n\nArgs:\n    ifc_file_path: Đường dẫn đến file IFC cần đọc, bắt buộc.\n    space_id: GlobalId của IfcSpace; None để không lọc theo phòng.\n    storey_id: GlobalId của IfcBuildingStorey; None để không lọc theo tầng.\n        Nếu truyền cả hai, một chuỗi quan hệ không gian phải thỏa cả hai.\n    ifc_types: Danh sách tên lớp IFC cần lấy, gồm cả lớp con. None dùng\n        DEFAULT_DEVICE_TYPES (các nhóm MEP, proxy và nội thất); [] trả [].\n\nReturns:\n    Danh sách sắp xếp theo element_id; mỗi phần tử gồm:\n    - element_id: GlobalId của đối tượng IFC.\n    - device_type: ObjectType, hoặc Name, hoặc tên lớp IFC; là thông tin\n      gốc, chưa chắc là mã loại thiết bị được chuẩn hóa.\n    - space_id: GlobalId phòng theo quan hệ IFC, hoặc None nếu không rõ.\n    - position: {x, y, z} của gốc ObjectPlacement trong hệ tọa độ model,\n      đơn vị mét; None nếu thiếu placement. Đây không phải tâm hình học.\n    - properties: {ifc_type, name, property_sets} từ IFC.\n\nRaises:\n    ValueError: GlobalId phòng/tầng sai loại hoặc ifc_types chứa lớp không\n        có trong schema IFC. Lỗi mở file hoặc đọc IFC có thể được truyền ra.\n\nLưu ý: nếu lọc theo phòng, đối tượng không có quan hệ phòng phù hợp sẽ\nkhông xuất hiện; danh sách rỗng không chứng minh phòng không có thiết bị.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "space_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID.",
+          "title": "Space Id"
+        },
+        "storey_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IfcBuildingStorey.GlobalId; omit to query the whole current model.",
+          "title": "Storey Id"
+        },
+        "ifc_types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ifc Types"
+        }
+      },
+      "title": "ifc_list_placed_devicesArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "playbook_get_load_class",
+    "description": "Resolve a unique Playbook load class from room usage and device category.\n\nspace_type/device_category are semantic labels, not IFC IDs. Returns the\nsource load_class_id, load_class_name and load_type. No or ambiguous matches\nreturn null fields. A load class is not a demand/diversity factor; this tool\ndoes not estimate power or choose a breaker.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "space_type": {
+          "description": "Room usage label such as Phòng ngủ/bedroom; not an IFC identifier.",
+          "title": "Space Type",
+          "type": "string"
+        },
+        "device_category": {
+          "description": "Device/load category such as lighting, outlet, air conditioner or water heater.",
+          "title": "Device Category",
+          "type": "string"
+        }
+      },
+      "required": [
+        "space_type",
+        "device_category"
+      ],
+      "title": "playbook_get_load_classArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "playbook_get_object_rules",
+    "description": "Tool 3: tra quy tắc đối tượng (quy_tac_doi_tuong) và quy tắc phòng (quy_tac_phong).\n\nMọi trường trả về đều lấy từ cột có thật trong DB. Các trường quantity_rule,\nspacing, host_type đã bỏ vì không có cột nguồn. Trường không áp dụng cho\nloại quy tắc đó (ví dụ mounting_height của quy tắc đối tượng) để None.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "device_type": {
+          "description": "Semantic device category; writer aliases include outlet, light, switch, junction_box and appliance.",
+          "title": "Device Type",
+          "type": "string"
+        },
+        "space_type": {
+          "description": "Room usage label such as Phòng ngủ/bedroom; not an IFC identifier.",
+          "title": "Space Type",
+          "type": "string"
+        },
+        "project_standard": {
+          "description": "Project's requested standard for provenance; source rules may not assert applicability.",
+          "title": "Project Standard",
+          "type": "string"
+        }
+      },
+      "required": [
+        "device_type",
+        "space_type",
+        "project_standard"
+      ],
+      "title": "playbook_get_object_rulesArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "playbook_get_terminal_class",
+    "description": "Tool 6: tra lớp đầu cuối (lop_dau_cuoi) và đặc điểm kết nối trong Playbook.\n\nĐiện áp lấy từ cột dien_ap_v. Với lớp hỗ trợ cả một pha lẫn ba pha, giá trị\nnày là một số duy nhất (hiện là dữ liệu test), nên missing_data chỉ báo thiếu\nđiện áp khi cột để trống.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "device_type": {
+          "description": "Semantic device category; writer aliases include outlet, light, switch, junction_box and appliance.",
+          "title": "Device Type",
+          "type": "string"
+        },
+        "connection_requirements": {
+          "additionalProperties": true,
+          "description": "Electrical constraints such as phases, voltage and connection_type; missing/ambiguous catalog data remains explicit.",
+          "title": "Connection Requirements",
+          "type": "object"
+        }
+      },
+      "required": [
+        "device_type",
+        "connection_requirements"
+      ],
+      "title": "playbook_get_terminal_classArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "playbook_query_devices",
+    "description": "Find existing catalog modules, breakers and connection devices by category.\n\ncategory matches normalized Vietnamese/English device keywords. filters maps\nsource column names to exact/substring values. Returns module_id/name, specs,\noptional ifc_class, rated_power and geometry_ref; null means missing source\ndata, not a default. Inspect specs before treating any rating as consumption.\nThis lookup does not create IFC instances or invent unavailable catalog IDs.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filters"
+        }
+      },
+      "required": [
+        "category"
+      ],
+      "title": "playbook_query_devicesArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "questionnaire_get_load_context",
+    "description": "Read questionnaire requirements pinned to this agent run's revision. Optional space_id is a room GlobalId; includes unknowns and unallocated loads.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "space_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID.",
+          "title": "Space Id"
+        }
+      },
+      "title": "questionnaire_get_load_contextArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "engine_validate_placements",
+    "description": "Check proposed world-metre positions against this project's current IFC. orientation is yaw degrees. Returns valid/errors/warnings; bbox checks require engineer review.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "proposals": {
+          "description": "Complete list of devices in the desired plan. Keep proposed_id stable; omitted existing entries request removal. All positions are model-world metres.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "proposed_id",
+              "device_type",
+              "space_id",
+              "host_id",
+              "position"
+            ],
+            "properties": {
+              "proposed_id": {
+                "type": "string",
+                "description": "Stable agent-defined identifier within this plan."
+              },
+              "device_type": {
+                "type": "string"
+              },
+              "space_id": {
+                "type": "string",
+                "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID."
+              },
+              "host_id": {
+                "type": "string",
+                "description": "GlobalId of the wall/slab/building element used as mount."
+              },
+              "position": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Absolute model-world metres."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Absolute model-world metres."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Absolute model-world metres."
+                  }
+                }
+              },
+              "orientation": {
+                "type": "object",
+                "properties": {
+                  "yaw": {
+                    "type": "number",
+                    "description": "Rotation around model Z in degrees."
+                  }
+                },
+                "required": [
+                  "yaw"
+                ]
+              },
+              "rule_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "maxItems": 2000,
+          "title": "Proposals",
+          "type": "array"
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Supported validation rules. min_separation_m is a nonnegative distance in metres; other rules generate unchecked warnings.",
+          "title": "Rules"
+        }
+      },
+      "required": [
+        "proposals"
+      ],
+      "title": "engine_validate_placementsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "draft_save_placements",
+    "description": "Save the COMPLETE placement proposal as the next durable pending-review revision. Backend recomputes validation; no approval/IFC write occurs. Omitted previous proposals request removal. Keep proposed_id stable.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "proposals": {
+          "description": "Complete list of devices in the desired plan. Keep proposed_id stable; omitted existing entries request removal. All positions are model-world metres.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "proposed_id",
+              "device_type",
+              "space_id",
+              "host_id",
+              "position"
+            ],
+            "properties": {
+              "proposed_id": {
+                "type": "string",
+                "description": "Stable agent-defined identifier within this plan."
+              },
+              "device_type": {
+                "type": "string"
+              },
+              "space_id": {
+                "type": "string",
+                "description": "IfcSpace.GlobalId in the current project snapshot; not a room name or STEP ID."
+              },
+              "host_id": {
+                "type": "string",
+                "description": "GlobalId of the wall/slab/building element used as mount."
+              },
+              "position": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Absolute model-world metres."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Absolute model-world metres."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Absolute model-world metres."
+                  }
+                }
+              },
+              "orientation": {
+                "type": "object",
+                "properties": {
+                  "yaw": {
+                    "type": "number",
+                    "description": "Rotation around model Z in degrees."
+                  }
+                },
+                "required": [
+                  "yaw"
+                ]
+              },
+              "rule_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "maxItems": 2000,
+          "title": "Proposals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "proposals"
+      ],
+      "title": "draft_save_placementsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "draft_get_placements",
+    "description": "Page the current draft with stable device UUIDs, coordinates, validation and version. Read every page before saving a revised COMPLETE plan; use device UUIDs for edit tools.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "offset": {
+          "default": 0,
+          "description": "Zero-based result offset. Continue paging until all items are read.",
+          "title": "Offset",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum records in this page; use small pages to avoid provider output truncation.",
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "draft_get_placementsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_modify_device",
+    "description": "Stage device edits into a NEW draft revision and revalidate. device_id is the draft UUID, not IFC GlobalId. Changes do not modify the approved IFC until review.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "device_id": {
+          "description": "Stable UUID from the placement draft; distinct from the IFC GlobalId.",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "changes": {
+          "additionalProperties": true,
+          "title": "Changes",
+          "type": "object"
+        }
+      },
+      "required": [
+        "device_id",
+        "changes"
+      ],
+      "title": "ifc_modify_deviceArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_remove_device",
+    "description": "Stage removal of one draft device UUID with a reason. Referenced IFC devices may block removal; only an approved revision can remove the model object.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "device_id": {
+          "description": "Stable UUID from the placement draft; distinct from the IFC GlobalId.",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Engineer/agent explanation recorded in the removal revision for audit.",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "device_id",
+        "reason"
+      ],
+      "title": "ifc_remove_deviceArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "calc_preliminary_load",
+    "description": "Calculate preliminary room/floor/zone load from a revision-pinned snapshot with placements/requirements. Include load_id, room_id, load_class_id, kind and sourced input_W/VA; socket ratings are not consumption. Unknowns remain explicit.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_type": {
+          "title": "Scope Type",
+          "type": "string"
+        },
+        "scope_id": {
+          "title": "Scope Id",
+          "type": "string"
+        },
+        "snapshot": {
+          "additionalProperties": true,
+          "title": "Snapshot",
+          "type": "object"
+        }
+      },
+      "required": [
+        "scope_type",
+        "scope_id",
+        "snapshot"
+      ],
+      "title": "calc_preliminary_loadArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_clash",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Check one element for geometric clashes against other elements.\n\n    Reports hard intersections and, optionally, violations of a required\n    clearance. Returns the overall ``pass``, the ``scope`` actually used, a\n    ``checks`` block in which each clash names the other ``element``, the\n    clash ``type``, the ``distance`` and the two closest points ``p1``/``p2``,\n    and a de-duplicated flat ``elements`` list of everything involved.\n    Geometry is computed for every element in scope, so this is slow on large\n    models; ``pass`` is ``None`` with an ``error`` when the element has no\n    usable geometry.\n\n    :param model: The IFC model.\n    :param element: The element to check.\n    :param clearance: Minimum required clearance distance; when given, also\n        runs the clearance check alongside the intersection check.\n    :param tolerance: Intersection tolerance in meters (default 0.002).\n    :param scope: ``\"storey\"`` (default) checks only elements sharing the\n        same spatial container; ``\"all\"`` checks every ``IfcElement``.\n        ``\"storey\"`` falls back to ``\"all\"`` when the element has no spatial\n        container.\n    :return: Dict with clash results suitable for JSON serialization.\n\nNote: this method takes a plain ``clearance: float`` rather than\n``clearance: float | None`` — ``0.0`` (the default) means \"skip the\nclearance check\", matching ``None`` in ``ifcquery.clash.clash()``.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "element_id": {
+          "description": "IFC numeric STEP ID from this exact loaded model, not an IFC GlobalId.",
+          "title": "Element Id",
+          "type": "integer"
+        },
+        "clearance": {
+          "default": 0.0,
+          "title": "Clearance",
+          "type": "number"
+        },
+        "tolerance": {
+          "default": 0.002,
+          "title": "Tolerance",
+          "type": "number"
+        },
+        "scope": {
+          "default": "storey",
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_id"
+      ],
+      "title": "ifc_clashArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_contexts",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Return all geometric representation contexts and subcontexts.\n\n    :param model: The in-memory IFC model.\n    :return: List of dicts with id, type, context_type, context_identifier,\n        and (for subcontexts) target_view and parent_context_id.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ifc_contextsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_info",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Inspect a single entity in depth.\n\n    Returns the entity's direct ``attributes`` plus, where present,\n    ``property_sets``, ``element_type``, ``material``, ``container``,\n    ``placement`` and ``geometry_summary``. Keys are omitted when the\n    information is unavailable.\n\n    :param model: The in-memory IFC model.\n    :param element: The entity to inspect.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "element_id": {
+          "description": "IFC numeric STEP ID from this exact loaded model, not an IFC GlobalId.",
+          "title": "Element Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "element_id"
+      ],
+      "title": "ifc_infoArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_materials",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. List the materials and material sets defined in the model.\n\n    Returns a single list covering ``IfcMaterial`` (with its category),\n    ``IfcMaterialLayerSet`` (each layer's name, thickness, material and\n    ventilation flag), ``IfcMaterialConstituentSet`` (constituent names,\n    materials and fractions) and ``IfcMaterialProfileSet`` (profile names and\n    materials). Every entry carries the step ID of the material entity.\n\n    :param model: The in-memory IFC model.\n    :return: List of dicts covering IfcMaterial, IfcMaterialLayerSet,\n        IfcMaterialConstituentSet, and IfcMaterialProfileSet entities.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ifc_materialsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_relations",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Show how an element relates to the rest of the model.\n\n    By default returns a dict whose optional blocks are ``hierarchy`` (parent,\n    container, aggregate, nest, filled void, voided element), ``children``\n    (contained, parts, components, openings), ``type_relationship``,\n    ``groups``, ``systems``, ``zones``, ``material``, ``referenced_structures``\n    and ``connections`` (connected to/from, ports), plus a de-duplicated flat\n    ``elements`` list of everything referenced. Blocks with nothing to report\n    are omitted.\n\n    :param model: The IFC model.\n    :param element: The element to examine.\n    :param traverse: Set to ``'up'`` to instead return the chain of ancestors\n        from the element to ``IfcProject`` as a flat list. Any other value\n        gives the default behaviour.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "element_id": {
+          "description": "IFC numeric STEP ID from this exact loaded model, not an IFC GlobalId.",
+          "title": "Element Id",
+          "type": "integer"
+        },
+        "traverse": {
+          "default": "",
+          "title": "Traverse",
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_id"
+      ],
+      "title": "ifc_relationsArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_schema",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Look up the IFC documentation for an entity class.\n\n    Returns the class ``description``, its ``predefined_types``, per-attribute\n    documentation and a ``spec_url``, resolved against the model's schema\n    version. Returns an ``error`` key for an unknown class.\n\n    :param model: The in-memory IFC model, used only for its schema version.\n    :param entity_type: IFC class name, for example ``'IfcWall'``.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_type": {
+          "title": "Entity Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_type"
+      ],
+      "title": "ifc_schemaArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_select",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Filter elements using ifcopenshell selector syntax and return matching element summaries.\n\n    Examples:\n    - ``IfcWall`` — all walls\n    - ``IfcWall, IfcColumn`` — walls and columns\n    - ``! IfcWall`` — everything except walls\n    - ``IfcWall, Name = \"My Wall\"`` — walls with a specific name attribute\n    - ``type = \"Concrete Wall\"`` — elements assigned that type product\n    - ``material = \"Concrete\"`` — elements with that material",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "ifc_selectArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_summary",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Summarise the model: schema, entity counts and project info.\n\n    Returns the ``schema`` version, ``total_entities``, and a ``project``\n    block with the id, name and description of the first ``IfcProject``\n    (omitted if the model has none). The count covers every entity in the\n    file, not just physical elements.\n\n    :param model: The in-memory IFC model.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ifc_summaryArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_tree",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Return the spatial hierarchy of the model as a nested tree.\n\n    Starts at ``IfcProject`` and descends through decomposition (site,\n    building, storeys) and containment (the elements placed in each storey).\n    Every node carries ``id``, ``type`` and ``name``; ``children`` holds\n    decomposed sub-spaces and ``elements`` holds contained elements, and\n    either key is omitted when empty. Returns a list when the file contains\n    several projects, or an ``error`` key when it contains none.\n\n    :param model: The in-memory IFC model.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ifc_treeArguments",
+      "type": "object"
+    }
+  },
+  {
+    "name": "ifc_validate",
+    "description": "Read-only IfcMCP query on the current project's pinned IFC. STEP IDs are model-local; use GlobalIds for placements. Validate the model against the IFC schema.\n\n    Returns ``valid`` together with a list of ``issues``, each carrying a\n    ``level`` and a ``message``. Worth running after a batch of edits and\n    before writing the model back to disk.\n\n    :param model: The in-memory IFC model.\n    :param express_rules: Also evaluate the schema's EXPRESS rules. Catches\n        more problems but is considerably slower (default ``False``).",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "express_rules": {
+          "default": false,
+          "title": "Express Rules",
+          "type": "boolean"
+        }
+      },
+      "title": "ifc_validateArguments",
+      "type": "object"
+    }
+  }
+]

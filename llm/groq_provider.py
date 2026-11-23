@@ -1,6 +1,9 @@
 import json
-from groq import AsyncGroq 
+
+from groq import AsyncGroq
+
 from .base import BaseLLM, LLMResponse, ToolCall
+
 
 class GroqProvider(BaseLLM):
     def __init__(self, api_key: str, model: str, system_prompt: str | None = None):
@@ -10,7 +13,6 @@ class GroqProvider(BaseLLM):
         self.messages = [{"role": "system", "content": system_prompt}] if system_prompt else []
         self.pending_calls = {}
         self.system_prompt = system_prompt
-
 
     def set_tools(self, tools: list[dict]) -> None:
         self.tools = [{"type": "function", "function": tool} for tool in tools]
@@ -27,12 +29,10 @@ class GroqProvider(BaseLLM):
         }
 
         if self.tools:
-            kwargs["tools"] = self.tools 
+            kwargs["tools"] = self.tools
             kwargs["tool_choice"] = "auto"
 
-        response = await self.client.chat.completions.create(
-            **kwargs
-        )
+        response = await self.client.chat.completions.create(**kwargs)
 
         assistant = response.choices[0].message
 
@@ -40,29 +40,31 @@ class GroqProvider(BaseLLM):
         serialized_calls = []
 
         for call in assistant.tool_calls or []:
-            serialized_calls.append({
-                "id": call.id,
-                "type": "function",
-                "function": {
-                    "name": call.function.name,
-                    "arguments": call.function.arguments,
-                },
-            })
+            serialized_calls.append(
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments,
+                    },
+                }
+            )
 
             try:
-                arguments = json.loads(
-                    call.function.arguments
-                )
+                arguments = json.loads(call.function.arguments)
                 if not isinstance(arguments, dict):
                     arguments = {}
             except json.JSONDecodeError:
                 arguments = {}
 
-            calls.append(ToolCall(
-                id=call.id,
-                name=call.function.name,
-                arguments=arguments,
-            ))
+            calls.append(
+                ToolCall(
+                    id=call.id,
+                    name=call.function.name,
+                    arguments=arguments,
+                )
+            )
 
         assistant_message = {
             "role": "assistant",
@@ -71,13 +73,11 @@ class GroqProvider(BaseLLM):
 
         if serialized_calls:
             assistant_message["tool_calls"] = serialized_calls
-        
-        self.pending_calls = {
-            call.id: call.name for call in calls
-        }
+        self.messages.append(assistant_message)
 
-        return LLMResponse(text = assistant.content or "",
-                           tool_calls = calls)
+        self.pending_calls = {call.id: call.name for call in calls}
+
+        return LLMResponse(text=assistant.content or "", tool_calls=calls)
 
     def add_tool_results(self, results: list[tuple[str, dict]]) -> None:
 
@@ -86,20 +86,23 @@ class GroqProvider(BaseLLM):
 
         if expected != received:
             missing_tools = expected - received
-            raise ValueError('Incomplete tool: {missing_tools}')
-            
+            raise ValueError(
+                f"Tool results mismatch: missing={missing_tools}, unexpected={received - expected}"
+            )
 
         for call_id, result in results:
-            self.messages.append({
-                "role": "tool",
-                "name": self.pending_calls[call_id],
-                "tool_call_id": call_id,
-                "content": json.dumps(
-                    result,
-                    ensure_ascii=False,
-                    default=str,
-                ),
-            })
+            self.messages.append(
+                {
+                    "role": "tool",
+                    "name": self.pending_calls[call_id],
+                    "tool_call_id": call_id,
+                    "content": json.dumps(
+                        result,
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                }
+            )
 
         self.pending_calls.clear()
 
@@ -109,26 +112,5 @@ class GroqProvider(BaseLLM):
     def load_history(self, message):
         self.pending_calls = {}
 
-        self.messages = [
-            {
-                "role": "system",
-                "content": self.system_prompt,
-            },
-            *message,
-        ]
-
-    
-
-
-
-
-            
-
-
-
-
-
-
-
-
-
+        base = [{"role": "system", "content": self.system_prompt}] if self.system_prompt else []
+        self.messages = [*base, *message]

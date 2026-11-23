@@ -6,6 +6,7 @@ self.messages vẫn ở dạng OpenAI (system / user / assistant / tool) để
 load_history dùng chung. Trước mỗi lần gọi API, _to_contents() chuyển
 chúng sang định dạng của Gemini.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,19 @@ from .base import BaseLLM, LLMResponse, ToolCall
 # Gemini dùng một tập con của OpenAPI schema; các khóa lạ (additionalProperties, $schema,
 # title, default...) làm API từ chối request nên phải lọc bỏ.
 _ALLOWED_SCHEMA_KEYS = {
-    "type", "description", "properties", "required", "items", "enum", "format",
-    "nullable", "minimum", "maximum", "minItems", "maxItems", "anyOf",
+    "type",
+    "description",
+    "properties",
+    "required",
+    "items",
+    "enum",
+    "format",
+    "nullable",
+    "minimum",
+    "maximum",
+    "minItems",
+    "maxItems",
+    "anyOf",
 }
 
 
@@ -160,9 +172,14 @@ class GeminiProvider(BaseLLM):
                         args = json.loads(tc["function"]["arguments"] or "{}")
                     except json.JSONDecodeError:
                         args = {}
-                    parts.append(types.Part(function_call=types.FunctionCall(
-                        name=tc["function"]["name"], args=args,
-                    )))
+                    parts.append(
+                        types.Part(
+                            function_call=types.FunctionCall(
+                                name=tc["function"]["name"],
+                                args=args,
+                            )
+                        )
+                    )
                 if parts:  # bỏ qua assistant rỗng
                     contents.append(types.Content(role="model", parts=parts))
 
@@ -185,7 +202,9 @@ class GeminiProvider(BaseLLM):
         )
 
         response = await self.client.aio.models.generate_content(
-            model=self.model, contents=contents, config=config,
+            model=self.model,
+            contents=contents,
+            config=config,
         )
 
         candidates = getattr(response, "candidates", None)
@@ -196,9 +215,7 @@ class GeminiProvider(BaseLLM):
         content = candidates[0].content
         parts = list(content.parts or []) if content else []
 
-        text = "".join(
-            p.text for p in parts if p.text and not getattr(p, "thought", False)
-        )
+        text = "".join(p.text for p in parts if p.text and not getattr(p, "thought", False))
 
         calls: list[ToolCall] = []
         serialized_calls: list[dict[str, Any]] = []
@@ -208,14 +225,16 @@ class GeminiProvider(BaseLLM):
                 continue
             call_id = fc.id or f"call_{uuid.uuid4().hex[:10]}"  # Gemini thường không trả id
             arguments = dict(fc.args or {})
-            serialized_calls.append({
-                "id": call_id,
-                "type": "function",
-                "function": {
-                    "name": fc.name,
-                    "arguments": json.dumps(arguments, ensure_ascii=False, default=str),
-                },
-            })
+            serialized_calls.append(
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": fc.name,
+                        "arguments": json.dumps(arguments, ensure_ascii=False, default=str),
+                    },
+                }
+            )
             calls.append(ToolCall(id=call_id, name=fc.name, arguments=arguments))
 
         assistant_message: dict[str, Any] = {"role": "assistant", "content": text}
@@ -255,12 +274,14 @@ class GeminiProvider(BaseLLM):
 
         for call_id, result in results:
             content = json.dumps(result, ensure_ascii=False, default=str)
-            self.messages.append({
-                "role": "tool",
-                "name": self.pending_calls[call_id],
-                "tool_call_id": call_id,
-                "content": self._clip(content),
-            })
+            self.messages.append(
+                {
+                    "role": "tool",
+                    "name": self.pending_calls[call_id],
+                    "tool_call_id": call_id,
+                    "content": self._clip(content),
+                }
+            )
 
         self.pending_calls.clear()
 

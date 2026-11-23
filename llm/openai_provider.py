@@ -97,11 +97,13 @@ class OpenAIProvider(BaseLLM):
                 arguments = {}
                 raw_args = "{}"  # gửi lại history bằng JSON hợp lệ để server không từ chối
 
-            serialized_calls.append({
-                "id": call.id,
-                "type": "function",
-                "function": {"name": call.function.name, "arguments": raw_args},
-            })
+            serialized_calls.append(
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.function.name, "arguments": raw_args},
+                }
+            )
             calls.append(ToolCall(id=call.id, name=call.function.name, arguments=arguments))
 
         assistant_message: dict[str, Any] = {
@@ -145,12 +147,14 @@ class OpenAIProvider(BaseLLM):
 
         for call_id, result in results:
             content = json.dumps(result, ensure_ascii=False, default=str)
-            self.messages.append({
-                "role": "tool",
-                "name": self.pending_calls[call_id],
-                "tool_call_id": call_id,
-                "content": self._clip(content),
-            })
+            self.messages.append(
+                {
+                    "role": "tool",
+                    "name": self.pending_calls[call_id],
+                    "tool_call_id": call_id,
+                    "content": self._clip(content),
+                }
+            )
 
         self.pending_calls.clear()
 

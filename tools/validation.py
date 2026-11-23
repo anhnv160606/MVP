@@ -34,8 +34,8 @@ def engine_validate_placements(
         proposals: Danh sách object. Mỗi object cần proposed_id, device_type,
             space_id (GlobalId IfcSpace), host_id (GlobalId IfcProduct) và
             position={x, y, z} là số hữu hạn tính bằng mét trong hệ tọa độ
-            model. orientation={x, y, z} thiếu/sai sẽ cảnh báo; hướng vẫn
-            chưa được kiểm định. rule_ids nếu có sẽ được báo chưa kiểm tra.
+            model. orientation là yaw theo độ hoặc {yaw: số độ}; hướng bề mặt
+            vẫn chưa được kiểm định. rule_ids nếu có sẽ được báo chưa kiểm tra.
         placement_context: Object; có thể chứa existing_devices từ Tool 7.
             Nếu thiếu hoặc None, tool tự gọi Tool 7 cho toàn bộ model. Có thể
             chứa ifc_file_path nếu không truyền tham số cùng tên riêng.
@@ -98,10 +98,14 @@ def engine_validate_placements(
 
     def point_in_box(point, box, tolerance=0.0):
         lower, upper = box
-        return all(float(lower[i]) - tolerance <= point[i] <= float(upper[i]) + tolerance for i in range(3))
+        return all(
+            float(lower[i]) - tolerance <= point[i] <= float(upper[i]) + tolerance for i in range(3)
+        )
 
     def finite_number(value):
-        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        return (
+            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        )
 
     separation = rules.get("min_separation_m")
     if separation is not None and (not finite_number(separation) or separation < 0):
@@ -109,7 +113,11 @@ def engine_validate_placements(
     for name in rules:
         if name != "min_separation_m":
             issue(warnings, "WARN_RULE_NOT_CHECKED", f"Chưa hỗ trợ kiểm tra rule '{name}'.")
-    issue(warnings, "WARN_APPROXIMATE_GEOMETRY", "Kiểm tra dùng bounding box và điểm gốc; kỹ sư cần kiểm tra hình dạng phòng, bề mặt, vật cản và kích thước thiết bị.")
+    issue(
+        warnings,
+        "WARN_APPROXIMATE_GEOMETRY",
+        "Kiểm tra dùng bounding box và điểm gốc; kỹ sư cần kiểm tra hình dạng phòng, bề mặt, vật cản và kích thước thiết bị.",
+    )
 
     existing = placement_context.get("existing_devices")
     if existing is None:
@@ -117,15 +125,27 @@ def engine_validate_placements(
     if not isinstance(existing, list):
         raise ValueError("placement_context.existing_devices phải là một danh sách")
     missing_positions = sum(
-        1 for device in existing
-        if not isinstance(device, dict) or not isinstance(device.get("position"), dict)
+        1
+        for device in existing
+        if not isinstance(device, dict)
+        or not isinstance(device.get("position"), dict)
         or any(not finite_number(device["position"].get(a)) for a in ("x", "y", "z"))
     )
     if missing_positions:
-        issue(warnings, "WARN_EXISTING_POSITION_UNAVAILABLE", f"{missing_positions} thiết bị hiện có thiếu tọa độ; chưa kiểm tra được khoảng cách.")
+        issue(
+            warnings,
+            "WARN_EXISTING_POSITION_UNAVAILABLE",
+            f"{missing_positions} thiết bị hiện có thiếu tọa độ; chưa kiểm tra được khoảng cách.",
+        )
 
     obstacles = []
-    for ifc_class in ("IfcDoor", "IfcWindow", "IfcColumn", "IfcFurniture", "IfcBuildingElementProxy"):
+    for ifc_class in (
+        "IfcDoor",
+        "IfcWindow",
+        "IfcColumn",
+        "IfcFurniture",
+        "IfcBuildingElementProxy",
+    ):
         try:
             obstacles.extend(reader.model.by_type(ifc_class))
         except RuntimeError:
@@ -148,43 +168,107 @@ def engine_validate_placements(
             if not isinstance(proposal.get(field), str) or not proposal[field].strip():
                 issue(errors, "ERR_MISSING_FIELD", f"Thiếu hoặc sai trường {field}.", device_id)
         pos = proposal.get("position")
-        if not isinstance(pos, dict) or any(not finite_number(pos.get(axis)) for axis in ("x", "y", "z")):
-            issue(errors, "ERR_INVALID_POSITION", "position cần x, y, z là số hữu hạn (m).", device_id)
+        if not isinstance(pos, dict) or any(
+            not finite_number(pos.get(axis)) for axis in ("x", "y", "z")
+        ):
+            issue(
+                errors, "ERR_INVALID_POSITION", "position cần x, y, z là số hữu hạn (m).", device_id
+            )
             continue
         point = tuple(pos[axis] for axis in ("x", "y", "z"))
         valid_positions.append((device_id, point))
-        orientation = proposal.get("orientation")
+        orientation = proposal.get("orientation", 0)
         if proposal.get("rule_ids"):
-            issue(warnings, "WARN_RULE_IDS_UNCHECKED", "Chưa đối chiếu rule_ids của proposal với Playbook.", device_id)
-        if not isinstance(orientation, dict) or any(not finite_number(orientation.get(axis)) for axis in ("x", "y", "z")):
-            issue(warnings, "WARN_ORIENTATION_UNCHECKED", "Thiếu orientation x, y, z hợp lệ; chưa thể kiểm tra hướng lắp.", device_id)
+            issue(
+                warnings,
+                "WARN_RULE_IDS_UNCHECKED",
+                "Chưa đối chiếu rule_ids của proposal với Playbook.",
+                device_id,
+            )
+        yaw = orientation.get("yaw") if isinstance(orientation, dict) else orientation
+        if not finite_number(yaw) or (
+            isinstance(orientation, dict) and set(orientation) != {"yaw"}
+        ):
+            issue(
+                errors,
+                "ERR_INVALID_ORIENTATION",
+                "orientation cần số độ yaw hoặc {yaw: số độ}.",
+                device_id,
+            )
         else:
-            issue(warnings, "WARN_ORIENTATION_UNCHECKED", "Chưa kiểm tra hướng xoay với pháp tuyến bề mặt.", device_id)
+            issue(
+                warnings,
+                "WARN_ORIENTATION_UNCHECKED",
+                "Chưa kiểm tra hướng xoay với pháp tuyến bề mặt.",
+                device_id,
+            )
         try:
             space = reader._get_element(proposal.get("space_id", ""), "IfcSpace")
         except (ValueError, TypeError):
-            issue(errors, "ERR_UNKNOWN_SPACE", "space_id không phải GlobalId của IfcSpace.", device_id)
+            issue(
+                errors, "ERR_UNKNOWN_SPACE", "space_id không phải GlobalId của IfcSpace.", device_id
+            )
         else:
             box = geometry(space)
             if box is None:
-                issue(warnings, "WARN_SPACE_GEOMETRY_UNAVAILABLE", "Không lấy được hình học phòng.", device_id)
+                issue(
+                    warnings,
+                    "WARN_SPACE_GEOMETRY_UNAVAILABLE",
+                    "Không lấy được hình học phòng.",
+                    device_id,
+                )
             elif not point_in_box(point, box, tolerance=0.02):
-                issue(errors, "ERR_OUTSIDE_SPACE_BBOX", "Điểm nằm ngoài bounding box phòng (dung sai 0.02 m).", device_id)
+                issue(
+                    errors,
+                    "ERR_OUTSIDE_SPACE_BBOX",
+                    "Điểm nằm ngoài bounding box phòng (dung sai 0.02 m).",
+                    device_id,
+                )
         host_id = proposal.get("host_id")
         try:
             host = reader.model.by_guid(host_id) if isinstance(host_id, str) else None
         except RuntimeError:
             host = None
-        if host is None or not host.is_a("IfcProduct"):
-            issue(errors, "ERR_UNKNOWN_HOST", "host_id không phải GlobalId của IfcProduct.", device_id)
+        if host is None or not host.is_a("IfcBuildingElement"):
+            issue(
+                errors,
+                "ERR_UNKNOWN_HOST",
+                "host_id không phải GlobalId của IfcBuildingElement.",
+                device_id,
+            )
         else:
-            if not any(host.is_a(c) for c in ("IfcWall", "IfcSlab", "IfcCovering", "IfcRoof", "IfcCurtainWall", "IfcBuildingElementProxy")):
-                issue(warnings, "WARN_HOST_TYPE_UNCHECKED", f"Host {host.is_a()} cần được kỹ sư xác nhận là bề mặt lắp phù hợp.", device_id)
+            if not any(
+                host.is_a(c)
+                for c in (
+                    "IfcWall",
+                    "IfcSlab",
+                    "IfcCovering",
+                    "IfcRoof",
+                    "IfcCurtainWall",
+                    "IfcBuildingElementProxy",
+                )
+            ):
+                issue(
+                    warnings,
+                    "WARN_HOST_TYPE_UNCHECKED",
+                    f"Host {host.is_a()} cần được kỹ sư xác nhận là bề mặt lắp phù hợp.",
+                    device_id,
+                )
             host_box = geometry(host)
             if host_box is None:
-                issue(warnings, "WARN_HOST_GEOMETRY_UNAVAILABLE", "Không lấy được hình học host.", device_id)
+                issue(
+                    warnings,
+                    "WARN_HOST_GEOMETRY_UNAVAILABLE",
+                    "Không lấy được hình học host.",
+                    device_id,
+                )
             elif not point_in_box(point, host_box, tolerance=0.1):
-                issue(warnings, "WARN_FAR_FROM_HOST", "Điểm nằm ngoài bounding box host hơn 0.1 m; cần kiểm tra bề mặt.", device_id)
+                issue(
+                    warnings,
+                    "WARN_FAR_FROM_HOST",
+                    "Điểm nằm ngoài bounding box host hơn 0.1 m; cần kiểm tra bề mặt.",
+                    device_id,
+                )
         for obstacle in obstacles:
             if obstacle.GlobalId == host_id:
                 continue
@@ -192,26 +276,55 @@ def engine_validate_placements(
             if box is None:
                 missing_obstacle_geometry.add(obstacle.GlobalId)
             elif point_in_box(point, box):
-                issue(warnings, "WARN_POSSIBLE_OBSTACLE_COLLISION", f"Điểm nằm trong bounding box {obstacle.is_a()} {obstacle.GlobalId}; cần kiểm tra hình học thật.", device_id)
+                issue(
+                    warnings,
+                    "WARN_POSSIBLE_OBSTACLE_COLLISION",
+                    f"Điểm nằm trong bounding box {obstacle.is_a()} {obstacle.GlobalId}; cần kiểm tra hình học thật.",
+                    device_id,
+                )
         for device in existing:
             epos = device.get("position") if isinstance(device, dict) else None
-            if not isinstance(epos, dict) or any(not finite_number(epos.get(a)) for a in ("x", "y", "z")):
+            if not isinstance(epos, dict) or any(
+                not finite_number(epos.get(a)) for a in ("x", "y", "z")
+            ):
                 continue
             distance = math.dist(point, tuple(epos[a] for a in ("x", "y", "z")))
             if distance < 0.001 or (separation is not None and distance < separation):
-                issue(warnings, "WARN_EXISTING_DEVICE_PROXIMITY", f"Gần thiết bị hiện có {device.get('element_id')} ({distance:.3f} m); cần kiểm tra.", device_id)
+                issue(
+                    warnings,
+                    "WARN_EXISTING_DEVICE_PROXIMITY",
+                    f"Gần thiết bị hiện có {device.get('element_id')} ({distance:.3f} m); cần kiểm tra.",
+                    device_id,
+                )
 
     if missing_obstacle_geometry:
-        issue(warnings, "WARN_OBSTACLE_GEOMETRY_UNAVAILABLE", f"Không lấy được hình học của {len(missing_obstacle_geometry)} cửa/cột/nội thất/vật cản.")
+        issue(
+            warnings,
+            "WARN_OBSTACLE_GEOMETRY_UNAVAILABLE",
+            f"Không lấy được hình học của {len(missing_obstacle_geometry)} cửa/cột/nội thất/vật cản.",
+        )
     for i, (first_id, first_point) in enumerate(valid_positions):
-        for second_id, second_point in valid_positions[i + 1:]:
+        for second_id, second_point in valid_positions[i + 1 :]:
             distance = math.dist(first_point, second_point)
             if distance < 0.001 or (separation is not None and distance < separation):
-                issue(warnings, "WARN_PROPOSAL_PROXIMITY", f"Gần proposal {second_id} ({distance:.3f} m); cần kiểm tra.", first_id)
-    return {"valid": not errors, "complete": False, "errors": errors, "warnings": warnings, "suggested_fixes": fixes}
+                issue(
+                    warnings,
+                    "WARN_PROPOSAL_PROXIMITY",
+                    f"Gần proposal {second_id} ({distance:.3f} m); cần kiểm tra.",
+                    first_id,
+                )
+    return {
+        "valid": not errors,
+        "complete": False,
+        "errors": errors,
+        "warnings": warnings,
+        "suggested_fixes": fixes,
+    }
 
 
-def validate_proposals_file(proposals_file: str | Path, ifc_file_path: str | Path, rules: dict[str, Any] | None = None) -> dict[str, Any]:
+def validate_proposals_file(
+    proposals_file: str | Path, ifc_file_path: str | Path, rules: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Đọc file JSON proposals rồi gọi engine_validate_placements.
 
     Args:
@@ -237,7 +350,11 @@ def main():
     parser.add_argument("--rules", help="JSON object chứa rules, ví dụ min_separation_m")
     args = parser.parse_args()
     rules = json.loads(Path(args.rules).read_text(encoding="utf-8")) if args.rules else None
-    print(json.dumps(validate_proposals_file(args.proposals, args.ifc, rules), ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            validate_proposals_file(args.proposals, args.ifc, rules), ensure_ascii=False, indent=2
+        )
+    )
 
 
 if __name__ == "__main__":
