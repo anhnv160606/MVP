@@ -217,7 +217,6 @@ def questionnaire_get_load_context(
         raise QuestionnaireLookupError(f"Unknown IFC space_id for this revision: {space_id}")
     return _public_context(project_id, snapshot, space_id, include_answers=include_answers)
 
-
 def main(argv: list[str] | None = None) -> None:
     from config.settings import Settings
     from database.supabase_client import get_supabase_client

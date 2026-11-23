@@ -1,0 +1,6 @@
+- Chưa xử lí được case thiếu ceiling và chưa thấy đọc được thông tin window
+- Supabase không tải được file nặng trên 50mb
+- self.backend.latest_plan(project_id) Chỗ này chưa có bất đồng bộ, cẩn thận bị chặn event loop nếu thao tác này truy vấn database
+- Việc lưu plan đang do Agent quyết định, do đó có rủi ro khi Agent bị lỗi hoặc bị kill, dẫn đến việc plan không được lưu. Cần cân nhắc việc lưu plan ở backend thay vì Agent.
+- Check lại các logic của các hàm trong backend
+- Dự án đang lưu memory vào 2 database khác nhau, một cái là Supabase, một cái là Sqlite. Sqlite lưu trạng thái workflow và thông tin dự án. Còn Supabase cũng lưu thông tin dự án và các rules 
