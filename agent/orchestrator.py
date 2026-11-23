@@ -20,7 +20,7 @@ class Orchestrator:
     def __init__(self, memory: ProjectMemory, backend):
         self.memory, self.backend = memory, backend
         self.locks: dict[str, asyncio.Lock] = {}
-
+    
     def _lock(self, project_id):
         return self.locks.setdefault(project_id, asyncio.Lock())
 

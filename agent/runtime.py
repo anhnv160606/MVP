@@ -23,7 +23,6 @@ from tools.ifc_read import (
 from tools.phase1.questionnaire_get_load_context import questionnaire_get_load_context
 from tools.registry import ToolRegistry
 
-
 class PlacementBackend:
     def __init__(self, settings: Settings, client, questionnaire_store, memory: ProjectMemory):
         self.settings, self.client, self.questionnaires = settings, client, questionnaire_store
@@ -126,7 +125,7 @@ class PlacementBackend:
                     ifc_write.ifc_modify_device(device_id, changes)
                     if changes is not None
                     else ifc_write.ifc_remove_device(device_id, reason)
-                )
+                ) 
             if result["status"] == "pending_review":
                 self.saved_plans[project_id] = {**plan, "version": result["version"]}
                 self.memory.checkpoint(project_id, self.saved_plans[project_id])
