@@ -648,6 +648,208 @@ def playbook_query_devices(
     return result
 
 
+def _positive_catalog_number(value: Any) -> int | float | None:
+    number = _to_number(value)
+    return number if number is not None and number > 0 else None
+
+
+def _validate_catalog_minimum(value: int | float | None, field: str) -> None:
+    if value is not None and (
+        type(value) not in (int, float) or not math.isfinite(value) or value < 0
+    ):
+        raise ValueError(f"{field} phải là số hữu hạn không âm")
+
+
+_PANEL_PHASE_COUNTS = {"mot pha": 1, "ba pha": 3, "1": 1, "3": 3}
+_PANEL_ROLES = {"tu dien chinh": "main", "tu dien tang": "floor"}
+_PANEL_MOUNTING_TYPES = {
+    "am tuong": "flush",
+    "noi": "surface",
+    "noi tuong": "surface",
+    "flush": "flush",
+    "surface": "surface",
+}
+
+
+def playbook_query_panels(
+    phase_count: int | None = None,
+    min_rated_current_a: float | None = None,
+    min_module_count: int | None = None,
+    mounting_type: str | None = None,
+    panel_role: str | None = None,
+) -> list[dict[str, Any]]:
+    """Tra tủ phân phối theo số pha, dòng tối thiểu (A), số ô tối thiểu và kiểu lắp.
+
+    Có thể lọc vai trò main (tủ chính) hoặc floor (tủ tầng). Kiểu lắp nhận flush
+    (âm tường) hoặc surface (nổi). Kết quả gồm mã, dòng, số ô và kích thước mm.
+    Kiểu lắp chung và kích thước chưa có được ghi rõ, không suy ra từ số ô.
+    """
+    if phase_count is not None and (type(phase_count) is not int or phase_count not in (1, 3)):
+        raise ValueError("phase_count phải là 1 hoặc 3")
+    _validate_catalog_minimum(min_rated_current_a, "min_rated_current_a")
+    if min_module_count is not None and (type(min_module_count) is not int or min_module_count < 0):
+        raise ValueError("min_module_count phải là số nguyên không âm")
+    if panel_role is not None and panel_role not in ("main", "floor"):
+        raise ValueError("panel_role phải là main hoặc floor")
+
+    requested_mounting = _PANEL_MOUNTING_TYPES.get(_normalize_text(mounting_type).strip())
+    if mounting_type is not None and requested_mounting is None:
+        raise ValueError("mounting_type phải là flush (âm tường) hoặc surface (nổi)")
+
+    results = []
+    for row in _playbook_rows(_get_supabase_client(), "tu_phan_phoi"):
+        catalog_id = row.get("ma_tu_goi_y")
+        phases = _PANEL_PHASE_COUNTS.get(_normalize_text(row.get("so_pha")).strip())
+        rated_current = _positive_catalog_number(row.get("dong_danh_dinh_goi_y_a"))
+        module_count = _positive_catalog_number(row.get("so_vi_tri_mo_dun"))
+        if (
+            not catalog_id
+            or phases is None
+            or rated_current is None
+            or type(module_count) is not int
+        ):
+            continue
+        role = _PANEL_ROLES.get(_normalize_text(row.get("loai_tu")).strip())
+        mounting_label = row.get("kieu_lap_dat")
+        mounting = _PANEL_MOUNTING_TYPES.get(_normalize_text(mounting_label).strip())
+        if (
+            (phase_count is not None and phases != phase_count)
+            or (min_rated_current_a is not None and rated_current < min_rated_current_a)
+            or (min_module_count is not None and module_count < min_module_count)
+            or (panel_role is not None and role != panel_role)
+            or (requested_mounting is not None and mounting != requested_mounting)
+        ):
+            continue
+
+        physical_specs = {
+            "width_mm": _positive_catalog_number(row.get("chieu_rong_mm")),
+            "height_mm": _positive_catalog_number(row.get("chieu_cao_mm")),
+            "depth_mm": _positive_catalog_number(row.get("chieu_sau_mm")),
+            "mounting_type": mounting,
+        }
+        missing_data = [field for field, value in physical_specs.items() if value is None]
+        results.append(
+            {
+                "catalog_id": catalog_id,
+                "panel_role": role,
+                "phase_count": phases,
+                "rated_current_a": rated_current,
+                "module_count": module_count,
+                **physical_specs,
+                "mounting_type_label": mounting_label,
+                "placement_data_complete": not missing_data,
+                "source": "tu_phan_phoi",
+                "verification_status": row.get("tinh_trang_kiem_chung"),
+                "missing_data": missing_data,
+            }
+        )
+    return sorted(
+        results,
+        key=lambda item: (item["module_count"], item["rated_current_a"], item["catalog_id"]),
+    )
+
+
+def playbook_query_breakers(
+    device_type: str,
+    pole_count: int | None = None,
+    min_rated_current_a: float | None = None,
+) -> list[dict[str, Any]]:
+    """Tra MCB nhánh (CB) hoặc RCCB theo số cực và dòng định mức tối thiểu (A).
+
+    Trả mã, dòng, số cực và bề rộng mô đun minh họa (mm). MCB lấy mã từ thiết bị
+    đóng cắt, RCCB lấy từ mô đun thiết bị. Bề rộng thiếu hoặc ghép mơ hồ trả null.
+    """
+    category = device_type.strip().upper() if isinstance(device_type, str) else None
+    if category not in ("CB", "RCCB"):
+        raise ValueError("device_type phải là CB hoặc RCCB")
+    if pole_count is not None and (type(pole_count) is not int or pole_count not in (1, 2, 3, 4)):
+        raise ValueError("pole_count phải là số nguyên từ 1 đến 4")
+    _validate_catalog_minimum(min_rated_current_a, "min_rated_current_a")
+
+    client = _get_supabase_client()
+    module_rows = _playbook_rows(client, "mo_dun_thiet_bi")
+    modules_by_rating = {}
+    if category == "CB":
+        row_specs = (
+            "thiet_bi_dong_cat",
+            "loai_thiet_bi",
+            "aptomat tep",
+            "ma_cau_hinh_mo_ta",
+            "so_cuc",
+            "dong_dinh_muc_a",
+        )
+        rows = _playbook_rows(client, "thiet_bi_dong_cat")
+        # Một dòng ghép duy nhất mới được dùng làm nguồn bề rộng cho MCB.
+        for row in module_rows:
+            if _normalize_text(row.get("nhom_thiet_bi")).strip() == "aptomat tep":
+                key = (
+                    _to_number(row.get("so_cuc_goi_y")),
+                    _to_number(row.get("dong_dinh_muc_goi_y_a")),
+                )
+                modules_by_rating.setdefault(key, []).append(row)
+    else:
+        row_specs = (
+            "mo_dun_thiet_bi",
+            "nhom_thiet_bi",
+            "cau dao chong dong ro",
+            "ten_cau_hinh",
+            "so_cuc_goi_y",
+            "dong_dinh_muc_goi_y_a",
+        )
+        rows = module_rows
+
+    source, group_field, group, id_field, poles_field, current_field = row_specs
+    results = []
+    for row in rows:
+        if _normalize_text(row.get(group_field)).strip() != group:
+            continue
+        catalog_id = row.get(id_field)
+        poles = _to_number(row.get(poles_field))
+        rated_current = _positive_catalog_number(row.get(current_field))
+        if not catalog_id or poles not in (1, 2, 3, 4) or rated_current is None:
+            continue
+        if pole_count is not None and poles != pole_count:
+            continue
+        if min_rated_current_a is not None and rated_current < min_rated_current_a:
+            continue
+
+        width_rows = [row]
+        if category == "CB":
+            width_rows = modules_by_rating.get((poles, rated_current), [])
+        width_row = width_rows[0] if len(width_rows) == 1 else {}
+        width = _positive_catalog_number(width_row.get("be_rong_minh_hoa_mm"))
+        width_status = "illustrative" if width is not None else "missing"
+        if len(width_rows) > 1:
+            width_status = "ambiguous"
+        specs = {
+            "module_width_mm": width,
+            "rated_voltage_v": _positive_catalog_number(row.get("dien_ap_dinh_muc_v")),
+            "breaking_capacity_ka": _positive_catalog_number(
+                row.get("kha_nang_cat_ngan_mach_ka" if category == "CB" else "kha_nang_cat_ka")
+            ),
+        }
+        if category == "RCCB":
+            specs["residual_current_ma"] = _positive_catalog_number(row.get("dong_ro_tac_dong_ma"))
+        results.append(
+            {
+                "catalog_id": catalog_id,
+                "device_type": "MCB" if category == "CB" else "RCCB",
+                "rated_current_a": rated_current,
+                "pole_count": poles,
+                **specs,
+                "source": source,
+                "verification_status": row.get("tinh_trang_kiem_chung"),
+                "module_width_status": width_status,
+                "module_width_catalog_id": width_row.get("ten_cau_hinh"),
+                "module_width_verification_status": width_row.get("tinh_trang_kiem_chung"),
+                "missing_data": [field for field, value in specs.items() if value is None],
+            }
+        )
+    return sorted(
+        results, key=lambda item: (item["rated_current_a"], item["pole_count"], item["catalog_id"])
+    )
+
+
 def playbook_get_load_class(space_type: str, device_category: str) -> dict[str, Any]:
     """Resolve a unique Playbook load class from room usage and device category.
 
