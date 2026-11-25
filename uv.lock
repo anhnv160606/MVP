@@ -208,6 +208,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
+    { name = "shapely" },
     { name = "supabase" },
     { name = "uvicorn" },
 ]
@@ -239,6 +240,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1,<4" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
     { name = "python-multipart", specifier = ">=0.0.20,<1" },
+    { name = "shapely", specifier = ">=2,<3" },
     { name = "supabase", specifier = ">=2,<3" },
     { name = "uvicorn", specifier = ">=0.34,<1" },
 ]
