@@ -1,3 +1,5 @@
+import { mountSldViewer } from "./sld_viewer.js";
+
 const labels = {
   lighting: "Chiếu sáng",
   general_receptacle: "Ổ cắm / điểm cấp điện",
@@ -45,6 +47,11 @@ const state = {
   socket: null,
   events: 0,
   selected: null,
+  sldSelectedDeviceIds: [],
+  sldSelectedPanelId: null,
+  sldPanels: [],
+  sldViewer: null,
+  sldArtifactKey: null,
   token: "",
   geometryRequest: 0,
   checklist: false,
@@ -226,6 +233,30 @@ function updateButtons() {
 function activeRoom() {
   return state.template?.spaces.find((r) => r.space_id === state.roomId);
 }
+function panelLocation(panel) {
+  const location = panel?.location || panel?.placement || {};
+  const raw =
+    panel?.position_m ||
+    panel?.position ||
+    location.position_m ||
+    location.position ||
+    panel?.coordinates;
+  if (!raw) return null;
+  const point = Array.isArray(raw)
+    ? { x: raw[0], y: raw[1], z: raw[2] }
+    : raw;
+  if (![point.x, point.y].every((value) => Number.isFinite(Number(value))))
+    return null;
+  return {
+    x: Number(point.x),
+    y: Number(point.y),
+    z: Number(point.z),
+    spaceId:
+      panel?.space_id || location.space_id || location.space?.space_id || null,
+    storeyId:
+      panel?.storey_id || location.storey_id || location.storey?.storey_id || null,
+  };
+}
 function roomDevices() {
   return (state.review?.proposals || []).filter(
     (d) => d.space_id === state.roomId,
@@ -338,7 +369,7 @@ function renderDrawing() {
     switch: "#547eb4",
     other: "#9270b5",
   };
-  const marks = devices
+  const deviceMarks = devices
     .map((device, index) => {
       const p = device.position;
       if (!p || ![p.x, p.y].every(Number.isFinite)) return "";
@@ -346,9 +377,33 @@ function renderDrawing() {
         kind = placementKind(device),
         id = device.proposed_id || device.device_id || String(index);
       const glyph = { light: "L", outlet: "O", switch: "S", other: "E" }[kind];
-      return `<g class="device-marker ${state.selected === id ? "selected" : ""}" data-device="${esc(id)}" tabindex="0" role="button" aria-label="${esc(deviceNames[device.device_type] || device.device_type)} ${index + 1}"><title>${esc(id)} · X ${fmt(p.x)}, Y ${fmt(p.y)}, Z ${fmt(p.z)} m</title><circle cx="${x}" cy="${y}" r="15" fill="${markerColors[kind]}" stroke="white" stroke-width="3"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="white" pointer-events="none">${glyph}</text></g>`;
+      const selected =
+        state.selected === id || state.sldSelectedDeviceIds.includes(id);
+      return `<g class="device-marker ${selected ? "selected" : ""}" data-device="${esc(id)}" tabindex="0" role="button" aria-label="${esc(deviceNames[device.device_type] || device.device_type)} ${index + 1}"><title>${esc(id)} · X ${fmt(p.x)}, Y ${fmt(p.y)}, Z ${fmt(p.z)} m</title><circle cx="${x}" cy="${y}" r="15" fill="${markerColors[kind]}" stroke="white" stroke-width="3"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="white" pointer-events="none">${glyph}</text></g>`;
     })
     .join("");
+  const panelMarks = state.sldPanels
+    .filter((panel) => {
+      const location = panelLocation(panel);
+      const roomStorey =
+        activeRoom()?.storey_id || activeRoom()?.storey?.storey_id || null;
+      return (
+        location &&
+        (location.spaceId
+          ? location.spaceId === state.roomId
+          : !location.storeyId || !roomStorey || location.storeyId === roomStorey)
+      );
+    })
+    .map((panel, index) => {
+      const location = panelLocation(panel);
+      const [x, y] = transform.point(location.x, location.y);
+      const id = panel.panel_id || panel.id;
+      const selected = state.sldSelectedPanelId === id;
+      const name = panel.name || id || `Tủ ${index + 1}`;
+      return `<g class="panel-marker ${selected ? "selected" : ""}" data-panel="${esc(id)}" tabindex="0" role="button" aria-label="Tủ ${esc(name)}"><title>${esc(name)} · X ${fmt(location.x)}, Y ${fmt(location.y)}, Z ${fmt(location.z)} m</title><rect x="${x - 14}" y="${y - 14}" width="28" height="28" rx="5"/><text x="${x}" y="${y + 4}" text-anchor="middle" pointer-events="none">T</text></g>`;
+    })
+    .join("");
+  const marks = `${deviceMarks}${panelMarks}`;
   $("drawing").innerHTML =
     `<svg viewBox="0 0 660 400" aria-label="Sơ đồ bounding box của phòng với thiết bị đề xuất"><rect x="${left}" y="${top}" width="${w}" height="${h}" fill="#f0f8f7" fill-opacity=".8" stroke="#648d93" stroke-width="4"/><rect x="${left + 7}" y="${top + 7}" width="${Math.max(w - 14, 1)}" height="${Math.max(h - 14, 1)}" fill="none" stroke="#c5dbda" stroke-dasharray="4 4"/><text x="330" y="${top + h / 2 - 8}" text-anchor="middle" fill="#87a6ac" font-size="15" font-family="Segoe UI, sans-serif">${esc(room?.name || "Phòng")}</text><text x="330" y="${top + h / 2 + 14}" text-anchor="middle" fill="#a0b8be" font-size="10" font-family="Segoe UI, sans-serif">${fmt(bbox.max[0] - bbox.min[0])} × ${fmt(bbox.max[1] - bbox.min[1])} m · bounding box</text><path d="M ${left} ${top + h + 23} H ${left + w}" stroke="#a6bbc2"/><text x="330" y="${top + h + 39}" text-anchor="middle" font-size="10" fill="#8fa6af" font-family="monospace">${fmt(bbox.max[0] - bbox.min[0])} m</text><text x="18" y="380" fill="#9cb1ba" font-size="9" font-family="monospace">Gốc model: X ${fmt(bbox.min[0])} · Y ${fmt(bbox.min[1])}</text>${marks}</svg>`;
 }
@@ -396,8 +451,93 @@ function renderReview() {
   $("raw-plan").textContent = state.review
     ? JSON.stringify(state.review, null, 2)
     : "Chưa có phương án.";
+  renderSld();
   renderDrawing();
   renderProject();
+}
+
+function renderSld() {
+  const review = state.review;
+  const artifact =
+    review?.sld_artifact ||
+    review?.sld ||
+    (review?.sld_svg
+      ? {
+          svg: review.sld_svg,
+          element_index: review.element_index,
+          sld_data: review.sld_data,
+          plan_id: review.plan_id,
+          version: review.version,
+          artifact_id: review.artifact_id,
+        }
+      : null);
+  const section = $("sld-review");
+  const key = artifact
+    ? `${artifact.artifact_id || artifact.schedule_hash || "sld"}:${artifact.version || review?.version || ""}`
+    : null;
+  section.hidden = !artifact?.svg;
+  $("download-sld").disabled = !artifact?.svg;
+  $("print-sld").disabled = !artifact?.svg;
+  if (!artifact?.svg) {
+    state.sldViewer?.destroy?.();
+    state.sldViewer = null;
+    state.sldArtifactKey = null;
+    state.sldSelectedDeviceIds = [];
+    state.sldSelectedPanelId = null;
+    state.sldPanels = [];
+    $("sld-canvas").replaceChildren();
+    $("sld-details").replaceChildren();
+    return;
+  }
+  if (state.sldArtifactKey === key && state.sldViewer) return;
+  state.sldViewer?.destroy?.();
+  try {
+    state.sldPanels = Object.values(artifact.sld_data?.panel || {});
+    state.sldViewer = mountSldViewer(
+      $("sld-canvas"),
+      $("sld-details"),
+      artifact,
+      (entry, data) => {
+        const ids =
+          entry.entity_type === "device"
+            ? [entry.entity_id]
+            : entry.entity_type === "circuit"
+              ? [
+                  ...(data?.device_ids || []),
+                  ...(data?.devices || []).map(
+                    (device) => device.device_id || device.id,
+                  ),
+                ].filter(Boolean)
+              : [];
+        state.sldSelectedDeviceIds = [...new Set(ids)];
+        state.sldSelectedPanelId =
+          entry.entity_type === "panel" ? entry.entity_id : null;
+        state.selected = entry.entity_type === "device" ? entry.entity_id : null;
+        renderDrawing();
+        const targetSpace =
+          data?.space_id || data?.location?.space_id || data?.placement?.space_id;
+        if (
+          targetSpace &&
+          targetSpace !== state.roomId &&
+          state.template?.spaces.some((space) => space.space_id === targetSpace)
+        ) {
+          selectRoom(targetSpace).then(() => {
+            state.sldSelectedDeviceIds = [...new Set(ids)];
+            state.sldSelectedPanelId =
+              entry.entity_type === "panel" ? entry.entity_id : null;
+            state.selected = entry.entity_type === "device" ? entry.entity_id : null;
+            renderDrawing();
+          });
+        }
+      },
+    );
+    state.sldArtifactKey = key;
+  } catch (error) {
+    state.sldViewer = null;
+    state.sldArtifactKey = null;
+    $("sld-canvas").textContent = error.message;
+    $("sld-details").replaceChildren();
+  }
 }
 
 async function selectRoom(roomId) {
@@ -852,6 +992,8 @@ function init() {
     }
   };
   $("refresh-review").onclick = () => busy(refreshReview);
+  $("download-sld").onclick = () => state.sldViewer?.downloadSvg();
+  $("print-sld").onclick = () => window.print();
   $("review-confirm").onchange = updateButtons;
   $("approve-button").onclick = () =>
     busy(async () => {
@@ -889,16 +1031,27 @@ function init() {
     });
   for (const id of ["drawing", "device-table"]) {
     const select = (event) => {
+      const panelNode = event.target.closest("[data-panel]");
+      if (panelNode) {
+        state.sldSelectedPanelId = panelNode.dataset.panel;
+        state.selected = null;
+        state.sldSelectedDeviceIds = [];
+        renderDrawing();
+        state.sldViewer?.selectEntity("panel", state.sldSelectedPanelId);
+        return;
+      }
       const node = event.target.closest("[data-device]");
       if (node) {
         state.selected = node.dataset.device;
+        state.sldSelectedDeviceIds = [state.selected];
         renderReview();
+        state.sldViewer?.selectDevice(state.selected);
       }
     };
     $(id).addEventListener("click", select);
     $(id).addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
-        if (event.target.closest("[data-device]")) {
+        if (event.target.closest("[data-device], [data-panel]")) {
           event.preventDefault();
           select(event);
         }

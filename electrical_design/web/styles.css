@@ -704,6 +704,25 @@ input[type="checkbox"] {
 .other {
   background: #8b6cae;
 }
+.panel-marker {
+  cursor: pointer;
+}
+.panel-marker rect {
+  fill: #d9ece8;
+  stroke: #007f78;
+  stroke-width: 2;
+}
+.panel-marker text {
+  fill: #006760;
+  font-size: 13px;
+  font-weight: 700;
+}
+.panel-marker.selected rect,
+.panel-marker:focus rect {
+  fill: #f6d99e;
+  stroke: #d58b25;
+  stroke-width: 3;
+}
 .legend-axis {
   margin-left: auto;
   font-family: monospace;
@@ -760,6 +779,165 @@ input[type="checkbox"] {
 .review-meta > span + span {
   font-size: 10px;
   color: #8b9da6;
+}
+.sld-review {
+  margin: 22px 0 18px;
+  padding: 15px;
+  border: 1px solid #dce8e9;
+  border-radius: 9px;
+  background: #fbfdfd;
+}
+.sld-review-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sld-review-heading h3 {
+  margin: 0 0 5px;
+  color: #284a55;
+  font-size: 12px;
+  font-weight: 600;
+}
+.sld-review-heading p,
+.sld-link-note {
+  margin: 0;
+  color: #8da0a9;
+  font-size: 9px;
+  line-height: 1.7;
+}
+.sld-actions {
+  display: flex;
+  gap: 12px;
+  white-space: nowrap;
+}
+.sld-canvas {
+  max-height: 64vh;
+  min-height: 210px;
+  overflow: auto;
+  border: 1px solid #e2ebed;
+  border-radius: 7px;
+  background: #f8fbfc;
+}
+.sld-svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: none;
+}
+.sld-background {
+  fill: #f8fbfc;
+}
+.sld-title {
+  fill: #31515c;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.sld-subtitle,
+.sld-panel-meta,
+.sld-panel-load,
+.sld-circuit-meta,
+.sld-empty-label {
+  fill: #80959e;
+  font-size: 10px;
+}
+.sld-panel-card {
+  fill: #fff;
+  stroke: #d4e2e5;
+  stroke-width: 1.5;
+}
+.sld-panel-name {
+  fill: #31515c;
+  font-size: 14px;
+  font-weight: 650;
+}
+.sld-wire,
+.sld-feeder-wire {
+  fill: none;
+  stroke: #6e8790;
+  stroke-width: 1.8;
+}
+.sld-busbar {
+  stroke: #007f78;
+  stroke-width: 4;
+}
+.sld-protected-busbar {
+  stroke-width: 2.5;
+}
+.sld-breaker-box,
+.sld-protection-box {
+  fill: #f7fbfa;
+  stroke: #4d7e7d;
+  stroke-width: 1.4;
+}
+.sld-main-breaker {
+  fill: #eaf6f3;
+  stroke-width: 1.8;
+}
+.sld-breaker-label,
+.sld-protection-label {
+  fill: #365a63;
+  font-size: 9px;
+}
+.sld-circuit-label {
+  fill: #294a55;
+  font-size: 10px;
+  font-weight: 600;
+}
+.sld-feeder-label {
+  fill: #5f7881;
+  font-size: 9px;
+}
+.sld-device-dot {
+  fill: #d09b35;
+  stroke: white;
+  stroke-width: 1;
+}
+.sld-entity {
+  cursor: pointer;
+}
+.sld-entity:focus .sld-panel-card,
+.sld-entity:focus .sld-breaker-box,
+.sld-entity:focus .sld-protection-box,
+.sld-entity.is-selected .sld-panel-card,
+.sld-entity.is-selected .sld-breaker-box,
+.sld-entity.is-selected .sld-protection-box {
+  stroke: #e09c37;
+  stroke-width: 3;
+}
+.sld-entity.is-selected .sld-wire,
+.sld-entity.is-selected .sld-busbar {
+  stroke: #d58b25;
+  stroke-width: 3;
+}
+.sld-details {
+  margin-top: 10px;
+  padding: 11px 13px;
+  border: 1px solid #e6edef;
+  border-radius: 6px;
+  background: #fff;
+}
+.sld-details h3 {
+  margin: 0 0 4px;
+  color: #31515c;
+  font-size: 11px;
+}
+.sld-details p {
+  margin: 0;
+  color: #8da0a9;
+  font-size: 9px;
+}
+.sld-details pre {
+  max-height: 180px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid #eff3f4;
+  font-size: 9px;
+}
+.sld-link-note {
+  margin-top: 9px;
 }
 .text-button {
   background: none;
@@ -1130,5 +1308,53 @@ dialog small {
   }
   .question-main {
     grid-template-columns: 1fr 115px;
+  }
+  .sld-review {
+    padding: 10px;
+  }
+  .sld-review-heading {
+    display: block;
+  }
+  .sld-actions {
+    margin-top: 8px;
+  }
+}
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #sld-review,
+  #sld-review * {
+    visibility: visible !important;
+  }
+  #sld-review {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: white;
+  }
+  .sld-actions,
+  .sld-details,
+  .sld-link-note {
+    display: none !important;
+  }
+  .sld-canvas {
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    border: 0;
+  }
+  .sld-svg {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
   }
 }
