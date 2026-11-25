@@ -27,7 +27,9 @@ from tools.phase1.questionnaire_submit import QuestionnaireStore
 log = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None, *, backend=None, memory=None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, backend=None, memory=None, panel_service_factory=None
+) -> FastAPI:
     settings = settings or Settings()
     if settings.app_env == "prod" and settings.api_token is None:
         raise ValueError("API_TOKEN is required in production")
@@ -131,6 +133,10 @@ def create_app(settings: Settings | None = None, *, backend=None, memory=None) -
     app.include_router(create_project_router())
     app.include_router(create_agent_router())
     app.include_router(create_review_router())
+    if panel_service_factory is not None:
+        from api.routes.panels import create_panel_router
+
+        app.include_router(create_panel_router(panel_service_factory))
     app.include_router(create_websocket_router())
     if hasattr(backend, "questionnaires"):
         from pathlib import Path

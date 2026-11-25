@@ -1,0 +1,1714 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Phase 2 Dev C contract v2",
+  "description": "Reference a named model via #/$defs/<ModelName>. Generated from Pydantic; semantic validation still runs in backend.",
+  "$defs": {
+    "ApprovalPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "default": "panel_design",
+          "enum": [
+            "panel_design",
+            "final"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "defer_to_routing": {
+          "items": {
+            "enum": [
+              "cable_protection",
+              "voltage_drop"
+            ],
+            "type": "string"
+          },
+          "title": "Defer To Routing",
+          "type": "array"
+        }
+      },
+      "title": "ApprovalPolicy",
+      "type": "object"
+    },
+    "CatalogItem": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "cabinet",
+            "mcb",
+            "mccb",
+            "rccb",
+            "rcbo",
+            "accessory"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "manufacturer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manufacturer"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "electrical_specs": {
+          "$ref": "#/$defs/ElectricalSpecs"
+        },
+        "dimensions_m": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Dimensions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mounting_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mounting Type"
+        },
+        "module_width_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module Width Mm"
+        },
+        "module_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module Count"
+        },
+        "source": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        },
+        "missing_data": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Missing Data",
+          "type": "array"
+        },
+        "verification_status": {
+          "default": "unverified",
+          "enum": [
+            "verified",
+            "reference",
+            "unverified"
+          ],
+          "title": "Verification Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "catalog_id",
+        "category"
+      ],
+      "title": "CatalogItem",
+      "type": "object"
+    },
+    "Device": {
+      "additionalProperties": false,
+      "properties": {
+        "device_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "ifc_global_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ifc Global Id"
+        },
+        "requirement_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Id"
+        },
+        "space_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Space Id"
+        },
+        "storey_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storey Id"
+        },
+        "position_m": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Position"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "load_class_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Load Class Id"
+        },
+        "terminal_class_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal Class Id"
+        },
+        "requires_supply": {
+          "title": "Requires Supply",
+          "type": "boolean"
+        },
+        "supply_point_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supply Point Id"
+        },
+        "circuit_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit Group"
+        },
+        "input_W": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input W"
+        },
+        "input_VA": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Va"
+        },
+        "power_factor": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Power Factor"
+        },
+        "power_sources": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Power Sources",
+          "type": "array"
+        },
+        "connection_requirements": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Connection Requirements",
+          "type": "object"
+        }
+      },
+      "required": [
+        "device_id",
+        "requires_supply"
+      ],
+      "title": "Device",
+      "type": "object"
+    },
+    "Dimensions": {
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "number"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "number"
+        },
+        "depth": {
+          "exclusiveMinimum": 0,
+          "title": "Depth",
+          "type": "number"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "depth"
+      ],
+      "title": "Dimensions",
+      "type": "object"
+    },
+    "ElectricalSpecs": {
+      "additionalProperties": false,
+      "properties": {
+        "rated_current_A": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rated Current A"
+        },
+        "rated_voltage_V": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rated Voltage V"
+        },
+        "poles": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Poles"
+        },
+        "breaking_capacity_kA": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Breaking Capacity Ka"
+        },
+        "residual_current_mA": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residual Current Ma"
+        },
+        "available_modules": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available Modules"
+        }
+      },
+      "title": "ElectricalSpecs",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "Position": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "Position",
+      "type": "object"
+    },
+    "SourceRefs": {
+      "additionalProperties": false,
+      "properties": {
+        "placement_plan_id": {
+          "title": "Placement Plan Id",
+          "type": "string"
+        },
+        "placement_version": {
+          "minimum": 1,
+          "title": "Placement Version",
+          "type": "integer"
+        },
+        "source_file_id": {
+          "title": "Source File Id",
+          "type": "string"
+        },
+        "model_revision": {
+          "minLength": 1,
+          "title": "Model Revision",
+          "type": "string"
+        },
+        "questionnaire_revision": {
+          "minimum": 1,
+          "title": "Questionnaire Revision",
+          "type": "integer"
+        },
+        "playbook_revision": {
+          "minLength": 1,
+          "title": "Playbook Revision",
+          "type": "string"
+        },
+        "ruleset_revision": {
+          "minLength": 1,
+          "title": "Ruleset Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "placement_plan_id",
+        "placement_version",
+        "source_file_id",
+        "model_revision",
+        "questionnaire_revision",
+        "playbook_revision",
+        "ruleset_revision"
+      ],
+      "title": "SourceRefs",
+      "type": "object"
+    },
+    "SupplyContext": {
+      "additionalProperties": false,
+      "properties": {
+        "phases": {
+          "anyOf": [
+            {
+              "enum": [
+                1,
+                3
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phases"
+        },
+        "voltage_LN_V": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voltage Ln V"
+        },
+        "voltage_LL_V": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voltage Ll V"
+        },
+        "earthing_system": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Earthing System"
+        },
+        "entry_point": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        }
+      },
+      "title": "SupplyContext",
+      "type": "object"
+    },
+    "PanelDesignContext": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 2,
+          "default": 2,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "status": {
+          "default": "partial",
+          "enum": [
+            "ok",
+            "partial",
+            "blocked",
+            "no_match"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "design_context_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Design Context Id",
+          "type": "string"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/SourceRefs"
+        },
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/Device"
+          },
+          "title": "Devices",
+          "type": "array"
+        },
+        "catalog": {
+          "items": {
+            "$ref": "#/$defs/CatalogItem"
+          },
+          "title": "Catalog",
+          "type": "array"
+        },
+        "supply_context": {
+          "$ref": "#/$defs/SupplyContext"
+        },
+        "unresolved_requirements": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Unresolved Requirements",
+          "type": "array"
+        },
+        "unmapped_devices": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Unmapped Devices",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "missing_data": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Missing Data",
+          "type": "array"
+        },
+        "assumptions": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        },
+        "rules": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "approval_policy": {
+          "$ref": "#/$defs/ApprovalPolicy"
+        },
+        "space_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Space Ids",
+          "type": "array"
+        },
+        "storey_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Storey Ids",
+          "type": "array"
+        },
+        "inventory_complete": {
+          "default": false,
+          "title": "Inventory Complete",
+          "type": "boolean"
+        },
+        "required_spare_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Spare Percent"
+        }
+      },
+      "required": [
+        "project_id",
+        "design_context_id",
+        "source_refs",
+        "devices",
+        "catalog",
+        "supply_context"
+      ],
+      "title": "PanelDesignContext",
+      "type": "object"
+    },
+    "Circuit": {
+      "additionalProperties": false,
+      "properties": {
+        "circuit_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Circuit Id",
+          "type": "string"
+        },
+        "panel_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Panel Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "device_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "maxItems": 2000,
+          "title": "Device Ids",
+          "type": "array"
+        },
+        "voltage_V": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voltage V"
+        },
+        "breaker_catalog_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Breaker Catalog Id"
+        }
+      },
+      "required": [
+        "circuit_id",
+        "panel_id",
+        "name",
+        "device_ids"
+      ],
+      "title": "Circuit",
+      "type": "object"
+    },
+    "Feeder": {
+      "additionalProperties": false,
+      "properties": {
+        "feeder_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Feeder Id",
+          "type": "string"
+        },
+        "upstream_panel_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Upstream Panel Id",
+          "type": "string"
+        },
+        "downstream_panel_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Downstream Panel Id",
+          "type": "string"
+        },
+        "voltage_V": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voltage V"
+        },
+        "breaker_catalog_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Breaker Catalog Id"
+        }
+      },
+      "required": [
+        "feeder_id",
+        "upstream_panel_id",
+        "downstream_panel_id"
+      ],
+      "title": "Feeder",
+      "type": "object"
+    },
+    "Location": {
+      "additionalProperties": false,
+      "properties": {
+        "space_id": {
+          "title": "Space Id",
+          "type": "string"
+        },
+        "host_id": {
+          "title": "Host Id",
+          "type": "string"
+        },
+        "position_m": {
+          "$ref": "#/$defs/Position"
+        },
+        "orientation": {
+          "$ref": "#/$defs/Orientation"
+        },
+        "candidate_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Id"
+        },
+        "geometry_revision": {
+          "title": "Geometry Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "space_id",
+        "host_id",
+        "position_m",
+        "orientation",
+        "geometry_revision"
+      ],
+      "title": "Location",
+      "type": "object"
+    },
+    "Orientation": {
+      "additionalProperties": false,
+      "properties": {
+        "yaw": {
+          "description": "Degrees around model-world Z.",
+          "title": "Yaw",
+          "type": "number"
+        }
+      },
+      "required": [
+        "yaw"
+      ],
+      "title": "Orientation",
+      "type": "object"
+    },
+    "Panel": {
+      "additionalProperties": false,
+      "properties": {
+        "panel_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Panel Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "main",
+            "distribution"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "storey_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storey Id"
+        },
+        "cabinet_catalog_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cabinet Catalog Id"
+        },
+        "main_breaker_catalog_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Breaker Catalog Id"
+        },
+        "accessory_catalog_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Accessory Catalog Ids",
+          "type": "array"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Location"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "panel_id",
+        "name",
+        "role"
+      ],
+      "title": "Panel",
+      "type": "object"
+    },
+    "PhaseAssignment": {
+      "additionalProperties": false,
+      "properties": {
+        "circuit_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit Id"
+        },
+        "feeder_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Feeder Id"
+        },
+        "phases": {
+          "items": {
+            "enum": [
+              "L1",
+              "L2",
+              "L3"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Phases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "phases"
+      ],
+      "title": "PhaseAssignment",
+      "type": "object"
+    },
+    "ProtectionGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "protection_group_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Protection Group Id",
+          "type": "string"
+        },
+        "panel_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Panel Id",
+          "type": "string"
+        },
+        "circuit_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Circuit Ids",
+          "type": "array"
+        },
+        "catalog_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Catalog Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protection_group_id",
+        "panel_id",
+        "circuit_ids",
+        "catalog_id"
+      ],
+      "title": "ProtectionGroup",
+      "type": "object"
+    },
+    "PanelSchedule": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 2,
+          "default": 2,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "panels": {
+          "items": {
+            "$ref": "#/$defs/Panel"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Panels",
+          "type": "array"
+        },
+        "final_circuits": {
+          "items": {
+            "$ref": "#/$defs/Circuit"
+          },
+          "maxItems": 2000,
+          "title": "Final Circuits",
+          "type": "array"
+        },
+        "feeders": {
+          "items": {
+            "$ref": "#/$defs/Feeder"
+          },
+          "maxItems": 100,
+          "title": "Feeders",
+          "type": "array"
+        },
+        "protection_groups": {
+          "items": {
+            "$ref": "#/$defs/ProtectionGroup"
+          },
+          "maxItems": 2000,
+          "title": "Protection Groups",
+          "type": "array"
+        },
+        "phase_assignments": {
+          "items": {
+            "$ref": "#/$defs/PhaseAssignment"
+          },
+          "maxItems": 2100,
+          "title": "Phase Assignments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "panels",
+        "final_circuits"
+      ],
+      "title": "PanelSchedule",
+      "type": "object"
+    },
+    "CalculationEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "circuit_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Circuit Id"
+        },
+        "feeder_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Feeder Id"
+        },
+        "panel_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Panel Id"
+        },
+        "connected_load_W": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connected Load W"
+        },
+        "connected_load_VA": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connected Load Va"
+        },
+        "estimated_demand_W": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Demand W"
+        },
+        "estimated_demand_VA": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Demand Va"
+        },
+        "design_current_A_by_phase": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "propertyNames": {
+            "enum": [
+              "L1",
+              "L2",
+              "L3"
+            ]
+          },
+          "title": "Design Current A By Phase",
+          "type": "object"
+        },
+        "formula_basis": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        }
+      },
+      "title": "CalculationEntry",
+      "type": "object"
+    },
+    "CheckResult": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CheckResult",
+      "type": "object"
+    },
+    "CalculationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "design_context_id": {
+          "title": "Design Context Id",
+          "type": "string"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/SourceRefs"
+        },
+        "calculation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Calculation Id",
+          "type": "string"
+        },
+        "schedule_hash": {
+          "title": "Schedule Hash",
+          "type": "string"
+        },
+        "status": {
+          "default": "partial",
+          "enum": [
+            "ok",
+            "partial",
+            "blocked",
+            "no_match"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "circuit_results": {
+          "items": {
+            "$ref": "#/$defs/CalculationEntry"
+          },
+          "title": "Circuit Results",
+          "type": "array"
+        },
+        "feeder_results": {
+          "items": {
+            "$ref": "#/$defs/CalculationEntry"
+          },
+          "title": "Feeder Results",
+          "type": "array"
+        },
+        "panel_results": {
+          "items": {
+            "$ref": "#/$defs/CalculationEntry"
+          },
+          "title": "Panel Results",
+          "type": "array"
+        },
+        "source_results": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Source Results",
+          "type": "object"
+        },
+        "scenario_results": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Scenario Results",
+          "type": "array"
+        },
+        "coverage": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Coverage",
+          "type": "object"
+        },
+        "missing_data": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Missing Data",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "assumptions": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "engineering_checks": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CheckResult"
+          },
+          "title": "Engineering Checks",
+          "type": "object"
+        }
+      },
+      "required": [
+        "project_id",
+        "design_context_id",
+        "source_refs",
+        "calculation_id",
+        "schedule_hash"
+      ],
+      "title": "CalculationResult",
+      "type": "object"
+    },
+    "SLDIndexEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_type": {
+          "enum": [
+            "panel",
+            "circuit",
+            "feeder",
+            "protection_group"
+          ],
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Entity Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "title": "SLDIndexEntry",
+      "type": "object"
+    },
+    "SLDArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "schedule_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Schedule Hash",
+          "type": "string"
+        },
+        "render_status": {
+          "const": "ready",
+          "title": "Render Status",
+          "type": "string"
+        },
+        "svg": {
+          "maxLength": 5000000,
+          "minLength": 1,
+          "title": "Svg",
+          "type": "string"
+        },
+        "element_index": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SLDIndexEntry"
+          },
+          "minProperties": 1,
+          "title": "Element Index",
+          "type": "object"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "plan_id",
+        "version",
+        "schedule_hash",
+        "render_status",
+        "svg",
+        "element_index"
+      ],
+      "title": "SLDArtifact",
+      "type": "object"
+    },
+    "ScheduleOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "add",
+            "update",
+            "remove"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "collection": {
+          "enum": [
+            "panels",
+            "final_circuits",
+            "feeders",
+            "protection_groups",
+            "phase_assignments"
+          ],
+          "title": "Collection",
+          "type": "string"
+        },
+        "entity_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "op",
+        "collection",
+        "entity_id"
+      ],
+      "title": "ScheduleOperation",
+      "type": "object"
+    },
+    "SaveRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Id"
+        },
+        "expected_version": {
+          "minimum": 0,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "proposed_schedule": {
+          "$ref": "#/$defs/PanelSchedule"
+        },
+        "design_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Design Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "request_id",
+        "expected_version",
+        "proposed_schedule"
+      ],
+      "title": "SaveRequest",
+      "type": "object"
+    },
+    "ModifyRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/ScheduleOperation"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Operations",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "request_id",
+        "expected_version",
+        "operations"
+      ],
+      "title": "ModifyRequest",
+      "type": "object"
+    }
+  }
+}

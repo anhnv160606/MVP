@@ -1,0 +1,403 @@
+{
+  "notice": "Dữ liệu minh họa; UUID/IFC ID không thuộc project thật. Không có kết quả pass giả lập.",
+  "design_context": {
+    "schema_version": 2,
+    "status": "partial",
+    "project_id": "11111111-1111-4111-8111-111111111111",
+    "design_context_id": "demo-context-1",
+    "source_refs": {
+      "placement_plan_id": "22222222-2222-4222-8222-222222222222",
+      "placement_version": 1,
+      "source_file_id": "33333333-3333-4333-8333-333333333333",
+      "model_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionnaire_revision": 1,
+      "playbook_revision": "demo-playbook-1",
+      "ruleset_revision": "demo-rules-1"
+    },
+    "devices": [
+      {
+        "device_id": "light-1",
+        "ifc_global_id": null,
+        "requirement_id": null,
+        "space_id": null,
+        "storey_id": null,
+        "position_m": null,
+        "load_class_id": null,
+        "terminal_class_id": null,
+        "requires_supply": true,
+        "supply_point_id": null,
+        "circuit_group": null,
+        "input_W": null,
+        "input_VA": null,
+        "power_factor": null,
+        "power_sources": [],
+        "connection_requirements": {
+          "phases": 1,
+          "voltage_V": 230.0
+        }
+      },
+      {
+        "device_id": "socket-1",
+        "ifc_global_id": null,
+        "requirement_id": null,
+        "space_id": null,
+        "storey_id": null,
+        "position_m": null,
+        "load_class_id": null,
+        "terminal_class_id": null,
+        "requires_supply": true,
+        "supply_point_id": null,
+        "circuit_group": null,
+        "input_W": null,
+        "input_VA": null,
+        "power_factor": null,
+        "power_sources": [],
+        "connection_requirements": {
+          "phases": 1,
+          "voltage_V": 230.0
+        }
+      },
+      {
+        "device_id": "socket-2",
+        "ifc_global_id": null,
+        "requirement_id": null,
+        "space_id": null,
+        "storey_id": null,
+        "position_m": null,
+        "load_class_id": null,
+        "terminal_class_id": null,
+        "requires_supply": true,
+        "supply_point_id": null,
+        "circuit_group": null,
+        "input_W": null,
+        "input_VA": null,
+        "power_factor": null,
+        "power_sources": [],
+        "connection_requirements": {
+          "phases": 1,
+          "voltage_V": 230.0
+        }
+      }
+    ],
+    "catalog": [
+      {
+        "catalog_id": "demo-main",
+        "category": "mcb",
+        "manufacturer": null,
+        "model": null,
+        "electrical_specs": {
+          "rated_current_A": 40.0,
+          "rated_voltage_V": 230.0,
+          "poles": 2,
+          "breaking_capacity_kA": null,
+          "residual_current_mA": null,
+          "available_modules": null
+        },
+        "dimensions_m": null,
+        "mounting_type": null,
+        "module_width_mm": null,
+        "module_count": 2.0,
+        "source": null,
+        "missing_data": [],
+        "verification_status": "reference"
+      },
+      {
+        "catalog_id": "demo-branch",
+        "category": "mcb",
+        "manufacturer": null,
+        "model": null,
+        "electrical_specs": {
+          "rated_current_A": 16.0,
+          "rated_voltage_V": 230.0,
+          "poles": 2,
+          "breaking_capacity_kA": null,
+          "residual_current_mA": null,
+          "available_modules": null
+        },
+        "dimensions_m": null,
+        "mounting_type": null,
+        "module_width_mm": null,
+        "module_count": 2.0,
+        "source": null,
+        "missing_data": [],
+        "verification_status": "reference"
+      },
+      {
+        "catalog_id": "demo-cabinet",
+        "category": "cabinet",
+        "manufacturer": null,
+        "model": null,
+        "electrical_specs": {
+          "rated_current_A": 63.0,
+          "rated_voltage_V": null,
+          "poles": null,
+          "breaking_capacity_kA": null,
+          "residual_current_mA": null,
+          "available_modules": 12.0
+        },
+        "dimensions_m": null,
+        "mounting_type": null,
+        "module_width_mm": null,
+        "module_count": null,
+        "source": null,
+        "missing_data": [],
+        "verification_status": "reference"
+      }
+    ],
+    "supply_context": {
+      "phases": 1,
+      "voltage_LN_V": 230.0,
+      "voltage_LL_V": null,
+      "earthing_system": null,
+      "entry_point": null
+    },
+    "unresolved_requirements": [],
+    "unmapped_devices": [],
+    "warnings": [],
+    "missing_data": [],
+    "assumptions": [],
+    "next_cursor": null,
+    "rules": [],
+    "approval_policy": {
+      "stage": "panel_design",
+      "defer_to_routing": [
+        "cable_protection",
+        "voltage_drop"
+      ]
+    },
+    "space_ids": [
+      "demo-room"
+    ],
+    "storey_ids": [
+      "demo-floor"
+    ],
+    "inventory_complete": true,
+    "required_spare_percent": 20.0
+  },
+  "proposed_schedule": {
+    "schema_version": 2,
+    "panels": [
+      {
+        "panel_id": "P1",
+        "name": "Tủ demo tầng 1",
+        "role": "main",
+        "storey_id": "demo-floor",
+        "cabinet_catalog_id": "demo-cabinet",
+        "main_breaker_catalog_id": "demo-main",
+        "accessory_catalog_ids": [],
+        "location": {
+          "space_id": "demo-room",
+          "host_id": "demo-wall",
+          "position_m": {
+            "x": 1.0,
+            "y": 2.0,
+            "z": 1.5
+          },
+          "orientation": {
+            "yaw": 90.0
+          },
+          "candidate_id": null,
+          "geometry_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ],
+    "final_circuits": [
+      {
+        "circuit_id": "C1",
+        "panel_id": "P1",
+        "name": "Chiếu sáng",
+        "device_ids": [
+          "light-1"
+        ],
+        "voltage_V": 230.0,
+        "breaker_catalog_id": "demo-branch"
+      },
+      {
+        "circuit_id": "C2",
+        "panel_id": "P1",
+        "name": "Ổ cắm",
+        "device_ids": [
+          "socket-1",
+          "socket-2"
+        ],
+        "voltage_V": 230.0,
+        "breaker_catalog_id": "demo-branch"
+      }
+    ],
+    "feeders": [],
+    "protection_groups": [],
+    "phase_assignments": [
+      {
+        "circuit_id": "C1",
+        "feeder_id": null,
+        "phases": [
+          "L1"
+        ]
+      },
+      {
+        "circuit_id": "C2",
+        "feeder_id": null,
+        "phases": [
+          "L1"
+        ]
+      }
+    ]
+  },
+  "calculation": {
+    "project_id": "11111111-1111-4111-8111-111111111111",
+    "design_context_id": "demo-context-1",
+    "source_refs": {
+      "placement_plan_id": "22222222-2222-4222-8222-222222222222",
+      "placement_version": 1,
+      "source_file_id": "33333333-3333-4333-8333-333333333333",
+      "model_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "questionnaire_revision": 1,
+      "playbook_revision": "demo-playbook-1",
+      "ruleset_revision": "demo-rules-1"
+    },
+    "calculation_id": "demo-incomplete-calculation",
+    "schedule_hash": "bb3597da893f980d3c854858622e09ca6d653153e30f00c037e0314d35a345a9",
+    "status": "partial",
+    "circuit_results": [
+      {
+        "circuit_id": "C1",
+        "feeder_id": null,
+        "panel_id": null,
+        "connected_load_W": null,
+        "connected_load_VA": null,
+        "estimated_demand_W": null,
+        "estimated_demand_VA": null,
+        "design_current_A_by_phase": {},
+        "formula_basis": "Chưa có input_W/input_VA được xác nhận"
+      },
+      {
+        "circuit_id": "C2",
+        "feeder_id": null,
+        "panel_id": null,
+        "connected_load_W": null,
+        "connected_load_VA": null,
+        "estimated_demand_W": null,
+        "estimated_demand_VA": null,
+        "design_current_A_by_phase": {},
+        "formula_basis": "Chưa có input_W/input_VA được xác nhận"
+      }
+    ],
+    "feeder_results": [],
+    "panel_results": [
+      {
+        "circuit_id": null,
+        "feeder_id": null,
+        "panel_id": "P1",
+        "connected_load_W": null,
+        "connected_load_VA": null,
+        "estimated_demand_W": null,
+        "estimated_demand_VA": null,
+        "design_current_A_by_phase": {},
+        "formula_basis": null
+      }
+    ],
+    "source_results": {},
+    "scenario_results": [],
+    "coverage": {
+      "complete": false
+    },
+    "missing_data": [
+      "Chưa có tải được xác nhận; đây là mẫu contract, không phải thiết kế đạt kiểm định."
+    ],
+    "warnings": [],
+    "assumptions": [],
+    "engineering_checks": {}
+  },
+  "save_request": {
+    "request_id": "demo-save-1",
+    "plan_id": null,
+    "expected_version": 0,
+    "proposed_schedule": {
+      "schema_version": 2,
+      "panels": [
+        {
+          "panel_id": "P1",
+          "name": "Tủ demo tầng 1",
+          "role": "main",
+          "storey_id": "demo-floor",
+          "cabinet_catalog_id": "demo-cabinet",
+          "main_breaker_catalog_id": "demo-main",
+          "accessory_catalog_ids": [],
+          "location": {
+            "space_id": "demo-room",
+            "host_id": "demo-wall",
+            "position_m": {
+              "x": 1.0,
+              "y": 2.0,
+              "z": 1.5
+            },
+            "orientation": {
+              "yaw": 90.0
+            },
+            "candidate_id": null,
+            "geometry_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ],
+      "final_circuits": [
+        {
+          "circuit_id": "C1",
+          "panel_id": "P1",
+          "name": "Chiếu sáng",
+          "device_ids": [
+            "light-1"
+          ],
+          "voltage_V": 230.0,
+          "breaker_catalog_id": "demo-branch"
+        },
+        {
+          "circuit_id": "C2",
+          "panel_id": "P1",
+          "name": "Ổ cắm",
+          "device_ids": [
+            "socket-1",
+            "socket-2"
+          ],
+          "voltage_V": 230.0,
+          "breaker_catalog_id": "demo-branch"
+        }
+      ],
+      "feeders": [],
+      "protection_groups": [],
+      "phase_assignments": [
+        {
+          "circuit_id": "C1",
+          "feeder_id": null,
+          "phases": [
+            "L1"
+          ]
+        },
+        {
+          "circuit_id": "C2",
+          "feeder_id": null,
+          "phases": [
+            "L1"
+          ]
+        }
+      ]
+    },
+    "design_reasons": [
+      "Một tủ, hai mạch minh họa."
+    ]
+  },
+  "modify_request": {
+    "request_id": "demo-edit-1",
+    "expected_version": 1,
+    "operations": [
+      {
+        "op": "update",
+        "collection": "final_circuits",
+        "entity_id": "C1",
+        "value": {
+          "name": "Chiếu sáng tầng 1"
+        }
+      }
+    ],
+    "reason": "Kỹ sư sửa nhãn mạch"
+  }
+}
