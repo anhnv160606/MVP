@@ -18,6 +18,7 @@ dependencies = [
     "groq>=1.7.0",
     "openai>=3.51.0",
     "openpyxl>=3.1,<4",
+    "shapely>=2,<3",
     "python-multipart>=0.0.20,<1",
 ]
 
